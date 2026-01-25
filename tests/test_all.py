@@ -570,43 +570,75 @@ class TestWebCommandRepoFiltering:
         assert repo is None
 
     def test_enrich_sessions_with_repos(self):
-        """Test enriching sessions with repo information."""
+        """Test enriching sessions with repo information from session metadata."""
         from claude_code_transcripts import enrich_sessions_with_repos
 
-        # Mock sessions from the API list
+        # Mock sessions from the API list with session_context
         sessions = [
-            {"id": "sess1", "title": "Session 1", "created_at": "2025-01-01T10:00:00Z"},
-            {"id": "sess2", "title": "Session 2", "created_at": "2025-01-02T10:00:00Z"},
-        ]
-
-        # Mock fetch function that returns session data with loglines
-        def mock_fetch(token, org_uuid, session_id):
-            if session_id == "sess1":
-                return {
-                    "loglines": [
+            {
+                "id": "sess1",
+                "title": "Session 1",
+                "created_at": "2025-01-01T10:00:00Z",
+                "session_context": {
+                    "outcomes": [
                         {
-                            "type": "assistant",
-                            "message": {
-                                "role": "assistant",
-                                "content": [
-                                    {
-                                        "type": "tool_result",
-                                        "content": "https://github.com/simonw/datasette/pull/new/branch",
-                                    }
-                                ],
-                            },
+                            "type": "git_repository",
+                            "git_info": {"repo": "simonw/datasette", "type": "github"},
                         }
                     ]
-                }
-            else:
-                return {"loglines": []}
+                },
+            },
+            {
+                "id": "sess2",
+                "title": "Session 2",
+                "created_at": "2025-01-02T10:00:00Z",
+                "session_context": {},
+            },
+        ]
 
-        enriched = enrich_sessions_with_repos(
-            sessions, "token", "org", fetch_fn=mock_fetch
-        )
+        enriched = enrich_sessions_with_repos(sessions)
 
         assert enriched[0]["repo"] == "simonw/datasette"
         assert enriched[1]["repo"] is None
+
+    def test_extract_repo_from_session_outcomes(self):
+        """Test extracting repo from session_context.outcomes."""
+        from claude_code_transcripts import extract_repo_from_session
+
+        session = {
+            "session_context": {
+                "outcomes": [
+                    {
+                        "type": "git_repository",
+                        "git_info": {"repo": "simonw/llm", "type": "github"},
+                    }
+                ]
+            }
+        }
+        assert extract_repo_from_session(session) == "simonw/llm"
+
+    def test_extract_repo_from_session_sources_url(self):
+        """Test extracting repo from session_context.sources URL."""
+        from claude_code_transcripts import extract_repo_from_session
+
+        session = {
+            "session_context": {
+                "sources": [
+                    {
+                        "type": "git_repository",
+                        "url": "https://github.com/simonw/datasette",
+                    }
+                ]
+            }
+        }
+        assert extract_repo_from_session(session) == "simonw/datasette"
+
+    def test_extract_repo_from_session_no_context(self):
+        """Test extracting repo when no session_context exists."""
+        from claude_code_transcripts import extract_repo_from_session
+
+        session = {"id": "sess1", "title": "No context"}
+        assert extract_repo_from_session(session) is None
 
     def test_filter_sessions_by_repo(self):
         """Test filtering sessions by repo."""

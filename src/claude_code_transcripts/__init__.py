@@ -619,30 +619,56 @@ def detect_github_repo(loglines):
     return None
 
 
-def enrich_sessions_with_repos(sessions, token, org_uuid, fetch_fn=None):
-    """Enrich sessions with repo information by fetching each session's details.
+def extract_repo_from_session(session):
+    """Extract GitHub repo from session metadata.
+
+    Looks in session_context.outcomes for git_info.repo,
+    or parses from session_context.sources URL.
+
+    Returns repo as "owner/name" or None.
+    """
+    context = session.get("session_context", {})
+
+    # Try outcomes first (has clean repo format)
+    outcomes = context.get("outcomes", [])
+    for outcome in outcomes:
+        if outcome.get("type") == "git_repository":
+            git_info = outcome.get("git_info", {})
+            repo = git_info.get("repo")
+            if repo:
+                return repo
+
+    # Fall back to sources URL
+    sources = context.get("sources", [])
+    for source in sources:
+        if source.get("type") == "git_repository":
+            url = source.get("url", "")
+            # Parse github.com/owner/repo from URL
+            if "github.com/" in url:
+                # Extract owner/repo from https://github.com/owner/repo
+                match = re.search(r"github\.com/([^/]+/[^/]+?)(?:\.git)?$", url)
+                if match:
+                    return match.group(1)
+
+    return None
+
+
+def enrich_sessions_with_repos(sessions, token=None, org_uuid=None, fetch_fn=None):
+    """Enrich sessions with repo information from session metadata.
 
     Args:
         sessions: List of session dicts from the API
-        token: API access token
-        org_uuid: Organization UUID
-        fetch_fn: Optional function to fetch session data (for testing)
+        token: Unused (kept for backward compatibility)
+        org_uuid: Unused (kept for backward compatibility)
+        fetch_fn: Unused (kept for backward compatibility)
 
     Returns:
         List of session dicts with 'repo' key added
     """
-    if fetch_fn is None:
-        fetch_fn = fetch_session
-
     enriched = []
     for session in sessions:
         session_copy = dict(session)
-        try:
-            session_data = fetch_fn(token, org_uuid, session["id"])
-            loglines = session_data.get("loglines", [])
-            session_copy["repo"] = detect_github_repo(loglines)
-        except Exception:
-            session_copy["repo"] = None
+        session_copy["repo"] = extract_repo_from_session(session)
         enriched.append(session_copy)
     return enriched
 
@@ -1992,9 +2018,8 @@ def web_cmd(
         if not sessions:
             raise click.ClickException("No sessions found.")
 
-        # Enrich sessions with repo information
-        click.echo("Fetching session details to detect repos...")
-        sessions = enrich_sessions_with_repos(sessions, token, org_uuid)
+        # Enrich sessions with repo information (extracted from session metadata)
+        sessions = enrich_sessions_with_repos(sessions)
 
         # Filter by repo if specified
         if repo:
