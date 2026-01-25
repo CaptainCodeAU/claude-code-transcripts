@@ -47,7 +47,7 @@ All commands support these options:
 
 - `-o, --output DIRECTORY` - output directory (default: writes to temp dir and opens browser)
 - `-a, --output-auto` - auto-name output subdirectory based on session ID or filename
-- `--repo OWNER/NAME` - GitHub repo for commit links (auto-detected from git push output if not specified)
+- `--repo OWNER/NAME` - GitHub repo for commit links (auto-detected if not specified). For `web` command, also filters the session list.
 - `--open` - open the generated `index.html` in your default browser (default if no `-o` specified)
 - `--gist` - upload the generated HTML files to a GitHub Gist and output a preview URL
 - `--json` - include the original session file in the output directory
@@ -85,6 +85,20 @@ claude-code-transcripts web SESSION_ID
 
 # Import and publish to gist
 claude-code-transcripts web SESSION_ID --gist
+```
+
+The session picker displays sessions grouped by their associated GitHub repository:
+
+```
+simonw/datasette              2025-01-15T10:30:00  Fix the bug in query parser
+simonw/llm                    2025-01-14T09:00:00  Add streaming support
+(no repo)                     2025-01-13T14:22:00  General coding session
+```
+
+Use `--repo` to filter the session list to a specific repository:
+
+```bash
+claude-code-transcripts web --repo simonw/datasette
 ```
 
 On macOS, API credentials are automatically retrieved from your keychain (requires being logged into Claude Code). On other platforms, provide `--token` and `--org-uuid` manually.
