@@ -2,3 +2,6 @@
 __pycache__
 uv.lock
 .playwright-mcp/
+.envrc
+.vscode/
+Plans/
