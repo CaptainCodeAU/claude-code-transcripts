@@ -132,6 +132,7 @@ Walk a folder of Claude Code projects and produce a browsable archive: a master 
 | `--dry-run` | flag | off | Print which projects/sessions would be converted; write nothing. |
 | `--open` | flag | off | Open the master `index.html` after generation. **Note:** `all` does **not** auto-open the browser; `--open` is the only way. |
 | `-q, --quiet` | flag | off | Suppress informational output (errors still print; `--dry-run` still prints its listing). |
+| `--json` / `--no-json` | flag | on | Copy each session's source `.jsonl` into its output directory alongside the rendered HTML (default: on; pass `--no-json` to suppress). |
 | `--help` | flag | — | Show command help and exit. |
 
 Source scan uses `<source>.glob("**/*.jsonl")` and groups each session by its parent folder (the "project"). Sessions with summary `"warmup"` or `"(no summary)"` are filtered out. Unless `--include-agents` is set, files starting with `agent-` are skipped.

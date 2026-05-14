@@ -65,6 +65,7 @@ Useful add-ons:
 
 - `--include-agents` — include `agent-*` session files (excluded by default).
 - `-q, --quiet` — suppress per-batch progress output.
+- `--no-json`: skip the default copy of each session's source `.jsonl` (by default the source is copied alongside the rendered HTML).
 - `--open` — open the rebuilt archive's master `index.html` after generation. `all` does not auto-open the browser otherwise.
 
 See [`CLI.md#all`](CLI.md#all) for every flag.
@@ -85,7 +86,7 @@ claude-code-transcripts all \
 claude-code-transcripts all -o ~/my-claude-code-transcripts
 ```
 
-The same `--dry-run`, `--include-agents`, `-q`, and `--open` add-ons apply. For very large archives, `-q` keeps the terminal quiet aside from a periodic "Processed N/total sessions" progress line.
+The same `--dry-run`, `--include-agents`, `-q`, `--no-json`, and `--open` add-ons apply. For very large archives, `-q` keeps the terminal quiet aside from a periodic "Processed N/total sessions" progress line. By default, each session's source `.jsonl` is copied into its output directory alongside the rendered HTML; pass `--no-json` to suppress.
 
 ## What gets overwritten
 
