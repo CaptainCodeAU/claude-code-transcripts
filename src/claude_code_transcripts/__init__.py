@@ -317,7 +317,11 @@ def find_all_sessions(folder, include_agents=False):
 
 
 def generate_batch_html(
-    source_folder, output_dir, include_agents=False, progress_callback=None
+    source_folder,
+    output_dir,
+    include_agents=False,
+    include_json=True,
+    progress_callback=None,
 ):
     """Generate HTML archive for all sessions in a Claude projects folder.
 
@@ -330,6 +334,8 @@ def generate_batch_html(
         source_folder: Path to the Claude projects folder
         output_dir: Path for output archive
         include_agents: Whether to include agent-* session files
+        include_json: If True (default), copy each session's source .jsonl into
+            its output directory alongside the rendered HTML.
         progress_callback: Optional callback(project_name, session_name, current, total)
             called after each session is processed
 
@@ -361,6 +367,8 @@ def generate_batch_html(
             # Generate transcript HTML with error handling
             try:
                 generate_html(session["path"], session_dir)
+                if include_json:
+                    shutil.copy(session["path"], session_dir / session["path"].name)
                 successful_sessions += 1
             except Exception as e:
                 failed_sessions.append(
@@ -2533,7 +2541,13 @@ def web_cmd(
     is_flag=True,
     help="Suppress all output except errors.",
 )
-def all_cmd(source, output, include_agents, dry_run, open_browser, quiet):
+@click.option(
+    "--json/--no-json",
+    "include_json",
+    default=True,
+    help="Copy each session's original JSONL source into the output directory alongside its rendered HTML (default: include; pass --no-json to suppress).",
+)
+def all_cmd(source, output, include_agents, dry_run, open_browser, quiet, include_json):
     """Convert all local Claude Code sessions to a browsable HTML archive.
 
     Creates a directory structure with:
@@ -2598,6 +2612,7 @@ def all_cmd(source, output, include_agents, dry_run, open_browser, quiet):
         source,
         output,
         include_agents=include_agents,
+        include_json=include_json,
         progress_callback=on_progress,
     )
 
