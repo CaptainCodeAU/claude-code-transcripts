@@ -35,7 +35,7 @@ Default behavior opens the result in your browser. Pass `-o` (without `--open`) 
 
 Useful add-ons:
 
-- `--json` — copy the source `.jsonl` alongside the rendered HTML in the output folder.
+- `--json` / `--no-json` — toggle whether the source `.jsonl` is copied alongside the rendered HTML (default: copy; pass `--no-json` to suppress).
 - `--gist` — after generation, upload to a GitHub Gist and print a `gisthost.github.io` preview URL.
 - `--repo owner/name` — set the GitHub repository for commit links (auto-detected from `git push` output in the session log if omitted).
 
