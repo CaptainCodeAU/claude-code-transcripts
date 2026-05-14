@@ -1817,3 +1817,59 @@ class TestSearchFeature:
 
         # Total pages should be embedded for JS to know how many pages to fetch
         assert "totalPages" in index_html or "total_pages" in index_html
+
+
+class TestThemeToggle:
+    """Tests for the dark/light theme toggle in generated HTML.
+
+    See CaptainCodeAU/claude-code-transcripts#3. The archive defaults to a dark
+    palette and exposes a floating toggle (rendered on every page via
+    base.html) that switches the viewer to the existing light palette and
+    persists the choice via localStorage.
+    """
+
+    def test_light_theme_override_block_present(self, output_dir):
+        """CSS must declare a [data-theme="light"] override block.
+
+        The presence of an explicit light-theme override implies the dark
+        palette lives in :root as the genuine default — visible even when JS
+        is disabled.
+        """
+        fixture_path = Path(__file__).parent / "sample_session.json"
+        generate_html(fixture_path, output_dir)
+
+        page_html = (output_dir / "page-001.html").read_text(encoding="utf-8")
+        assert (
+            '[data-theme="light"]' in page_html
+        ), 'expected [data-theme="light"] CSS selector in rendered page'
+
+    def test_theme_init_script_runs_before_paint(self, output_dir):
+        """An inline script in <head> must apply data-theme before first paint.
+
+        Without this, returning users who chose light would see a flash of the
+        dark default on every page navigation. The script must reference
+        localStorage and set data-theme on the document element.
+        """
+        fixture_path = Path(__file__).parent / "sample_session.json"
+        generate_html(fixture_path, output_dir)
+
+        page_html = (output_dir / "page-001.html").read_text(encoding="utf-8")
+        head_section = page_html.split("</head>", 1)[0]
+        assert (
+            "localStorage" in head_section and "data-theme" in head_section
+        ), "expected inline localStorage-based data-theme init script in <head>"
+
+    def test_theme_toggle_button_on_every_page_type(self, output_dir):
+        """The floating theme-toggle button must render on every generated page.
+
+        Pages all extend base.html, so adding the button to base.html means
+        index.html, page-NNN.html, and any future template gets it for free.
+        """
+        fixture_path = Path(__file__).parent / "sample_session.json"
+        generate_html(fixture_path, output_dir)
+
+        for filename in ["index.html", "page-001.html"]:
+            page_html = (output_dir / filename).read_text(encoding="utf-8")
+            assert (
+                'id="theme-toggle"' in page_html
+            ), f'expected id="theme-toggle" button in {filename}'
