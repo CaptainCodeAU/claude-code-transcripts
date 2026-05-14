@@ -852,6 +852,167 @@ class TestContinuationLongTexts:
         assert "Redis JavaScript Module" in index_html
 
 
+class TestTaskNotificationRendering:
+    """Tests for handling background <task-notification> user entries.
+
+    See simonw/claude-code-transcripts#99 (reported upstream). When Claude Code
+    runs a tool with run_in_background=True, the eventual completion arrives in
+    the JSONL as a type:user entry whose message.content is a STRING beginning
+    with <task-notification>. These are machine-generated, not user prompts.
+    """
+
+    def _build_session(self):
+        """Session: user prompt → bg bash tool_use → tool_result → assistant
+        text → task-notification completion. The notification is the bug case."""
+        return {
+            "loglines": [
+                {
+                    "type": "user",
+                    "timestamp": "2026-01-01T10:00:00.000Z",
+                    "message": {
+                        "role": "user",
+                        "content": "Please run the long task in the background",
+                    },
+                },
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-01-01T10:00:00.500Z",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "toolu_AAA",
+                                "name": "Bash",
+                                "input": {
+                                    "command": "sleep 30",
+                                    "run_in_background": True,
+                                    "description": "Long task",
+                                },
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "user",
+                    "timestamp": "2026-01-01T10:00:01.000Z",
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_AAA",
+                                "content": "Async bash launched. id=bash_AAA",
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-01-01T10:00:02.000Z",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "Started; continuing while it runs.",
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "user",
+                    "timestamp": "2026-01-01T10:00:32.000Z",
+                    "message": {
+                        "role": "user",
+                        "content": (
+                            "<task-notification>\n"
+                            "<task-id>bash_AAA</task-id>\n"
+                            "<tool-use-id>toolu_AAA</tool-use-id>\n"
+                            "<status>completed</status>\n"
+                            '<summary>Background command "Long task" '
+                            "completed (exit code 0)</summary>\n"
+                            "</task-notification>"
+                        ),
+                    },
+                },
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-01-01T10:00:33.000Z",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "text", "text": "The background task finished."}
+                        ],
+                    },
+                },
+            ]
+        }
+
+    def test_task_notification_not_rendered_as_user(self, output_dir):
+        """task-notification entry must not get the blue User role panel."""
+        session_file = output_dir / "session.json"
+        session_file.write_text(json.dumps(self._build_session()), encoding="utf-8")
+
+        generate_html(session_file, output_dir)
+
+        page_html = (output_dir / "page-001.html").read_text(encoding="utf-8")
+        # Markdown passes the raw <task-notification> tags through, so search
+        # for an inner marker that's stable across rendering paths.
+        notification_start = page_html.find("<status>completed</status>")
+        assert (
+            notification_start != -1
+        ), "notification body should appear in rendered page"
+        # Walk back to the enclosing <div class="message ...">
+        preceding = page_html[:notification_start]
+        opening = preceding.rfind('<div class="message ')
+        assert opening != -1, "notification must be inside a message div"
+        # The class must NOT be `user` for a machine-generated notification
+        wrapper = page_html[opening : opening + 80]
+        assert (
+            'class="message user"' not in wrapper
+        ), f"notification rendered as User role: {wrapper!r}"
+
+    def test_task_notification_does_not_inflate_prompt_count(self, output_dir):
+        """Index timeline must not count notifications as user prompts."""
+        session_file = output_dir / "session.json"
+        session_file.write_text(json.dumps(self._build_session()), encoding="utf-8")
+
+        generate_html(session_file, output_dir)
+
+        index_html = (output_dir / "index.html").read_text(encoding="utf-8")
+        # Only one real user prompt: "Please run the long task in the background"
+        assert "1 prompts" in index_html or "1 prompt" in index_html
+        assert "2 prompts" not in index_html
+
+    def test_task_notification_not_in_index_timeline(self, output_dir):
+        """The index timeline must not list a notification as its own item.
+        Bug: each new conversation gets an index item with its user_text shown
+        as the headline. A notification erroneously starting a conversation
+        would surface its <task-notification> XML as a timeline headline."""
+        session_file = output_dir / "session.json"
+        session_file.write_text(json.dumps(self._build_session()), encoding="utf-8")
+
+        generate_html(session_file, output_dir)
+
+        index_html = (output_dir / "index.html").read_text(encoding="utf-8")
+        # The notification's content must not appear inside an index-item-content
+        # block (which is how user_text headlines are rendered).
+        # Look for any index-item-content containing the notification marker.
+        import re
+
+        item_contents = re.findall(
+            r'<div class="index-item-content">(.*?)</div>',
+            index_html,
+            flags=re.DOTALL,
+        )
+        for content in item_contents:
+            assert (
+                "task-notification" not in content
+                and "<status>completed</status>" not in content
+            ), f"notification surfaced as index timeline item: {content[:120]!r}"
+
+
 class TestSessionJsonOption:
     """Tests for the session command --json option."""
 
