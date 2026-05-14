@@ -194,6 +194,7 @@ Options:
 - `--dry-run` - show what would be converted without creating files
 - `--open` - open the generated archive in your default browser
 - `-q, --quiet` - suppress all output except errors
+- `--json` / `--no-json` - copy each session's source `.jsonl` into its output directory alongside the rendered HTML (default: on; use `--no-json` to suppress)
 
 Examples:
 

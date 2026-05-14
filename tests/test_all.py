@@ -415,6 +415,70 @@ class TestAllCommand:
         assert not (output_dir / "index.html").exists()
 
 
+class TestAllJsonFlag:
+    """Tests for the all command --json/--no-json flag."""
+
+    def test_all_includes_jsonl_by_default(self, mock_projects_dir, output_dir):
+        """Without any flag, all subcommand copies each session's source jsonl."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "all",
+                "--source",
+                str(mock_projects_dir),
+                "--output",
+                str(output_dir),
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert (output_dir / "project-a" / "abc123" / "abc123.jsonl").exists()
+        assert (output_dir / "project-a" / "def456" / "def456.jsonl").exists()
+        assert (output_dir / "project-b" / "ghi789" / "ghi789.jsonl").exists()
+
+    def test_all_no_json_suppresses_copy(self, mock_projects_dir, output_dir):
+        """Passing --no-json suppresses the default jsonl copy."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "all",
+                "--source",
+                str(mock_projects_dir),
+                "--output",
+                str(output_dir),
+                "--no-json",
+            ],
+        )
+
+        assert result.exit_code == 0
+        # HTML still gets produced
+        assert (output_dir / "index.html").exists()
+        # But no jsonl files in session dirs
+        assert not (output_dir / "project-a" / "abc123" / "abc123.jsonl").exists()
+        assert not (output_dir / "project-b" / "ghi789" / "ghi789.jsonl").exists()
+
+    def test_all_explicit_json_still_works(self, mock_projects_dir, output_dir):
+        """Passing --json explicitly matches the default-on behavior."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "all",
+                "--source",
+                str(mock_projects_dir),
+                "--output",
+                str(output_dir),
+                "--json",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert (output_dir / "project-a" / "abc123" / "abc123.jsonl").exists()
+        assert (output_dir / "project-b" / "ghi789" / "ghi789.jsonl").exists()
+
+
 class TestJsonCommandWithUrl:
     """Tests for the json command with URL support."""
 
