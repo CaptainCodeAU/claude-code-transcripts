@@ -1,5 +1,6 @@
 """Convert Claude Code session JSON to a clean mobile-friendly HTML page with pagination."""
 
+import base64
 import json
 import html
 import os
@@ -24,6 +25,18 @@ _jinja_env = Environment(
     loader=PackageLoader("claude_code_transcripts", "templates"),
     autoescape=True,
 )
+
+
+def _b64encode_filter(value):
+    """Base64-encode a value (str or bytes) for use in HTML data attributes."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        value = value.encode("utf-8")
+    return base64.b64encode(value).decode("ascii")
+
+
+_jinja_env.filters["b64encode"] = _b64encode_filter
 
 # Load macros template and expose macros
 _macros_template = _jinja_env.get_template("macros.html")
@@ -768,10 +781,76 @@ def format_json(obj):
         return f"<pre>{html.escape(str(obj))}</pre>"
 
 
+class CopySourceTreeprocessor(markdown.treeprocessors.Treeprocessor):
+    """Attach copy-target--inline-code + data-copy-src to inline <code> spans."""
+
+    def run(self, root):
+        inside_pre = set()
+        for pre in root.iter("pre"):
+            for code in pre.iter("code"):
+                inside_pre.add(id(code))
+        for code in root.iter("code"):
+            if id(code) in inside_pre:
+                continue
+            raw = code.text or ""
+            existing = code.get("class")
+            merged = (
+                f"{existing} copy-target--inline-code".strip()
+                if existing
+                else "copy-target--inline-code"
+            )
+            code.set("class", merged)
+            code.set(
+                "data-copy-src",
+                base64.b64encode(raw.encode("utf-8")).decode("ascii"),
+            )
+
+
+class CopySourcePostprocessor(markdown.postprocessors.Postprocessor):
+    """Attach copy-target--code-block + data-copy-src to <pre><code> blocks.
+
+    fenced_code stashes the <pre><code> HTML and substitutes it back during
+    postprocessing, so the tree never sees these elements. We rewrite the
+    final HTML string instead.
+    """
+
+    PATTERN = re.compile(r"<pre[^>]*>(<code[^>]*>)(.*?)</code></pre>", re.DOTALL)
+
+    def run(self, text):
+        return self.PATTERN.sub(self._replace, text)
+
+    @staticmethod
+    def _replace(match):
+        opening = match.group(1)
+        body = match.group(2)
+        raw = html.unescape(body)
+        b64 = base64.b64encode(raw.encode("utf-8")).decode("ascii")
+        if 'class="' in opening:
+            new_opening = opening.replace(
+                'class="', 'class="copy-target--code-block ', 1
+            )
+        else:
+            new_opening = opening.replace(
+                "<code", '<code class="copy-target--code-block"', 1
+            )
+        new_opening = new_opening[:-1] + f' data-copy-src="{b64}">'
+        return f"<pre>{new_opening}{body}</code></pre>"
+
+
+class CopySourceExtension(markdown.extensions.Extension):
+    """Markdown extension that registers copy-source instrumentation."""
+
+    def extendMarkdown(self, md):
+        md.treeprocessors.register(CopySourceTreeprocessor(md), "copy_source_inline", 5)
+        md.postprocessors.register(CopySourcePostprocessor(md), "copy_source_block", 5)
+
+
 def render_markdown_text(text):
     if not text:
         return ""
-    return markdown.markdown(text, extensions=["fenced_code", "tables"])
+    return markdown.markdown(
+        text, extensions=["fenced_code", "tables", CopySourceExtension()]
+    )
 
 
 def is_json_like(text):
@@ -797,11 +876,43 @@ def is_task_notification(content):
     )
 
 
+_TODO_STATUS_MARKER = {"completed": "x", "in_progress": "→", "pending": " "}
+
+
+def _tool_result_raw_text(content):
+    """Best-effort raw-text representation of tool_result content for copy buttons."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        texts = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text = item.get("text", "")
+                if text:
+                    texts.append(text)
+        return "\n\n".join(texts)
+    if content is None:
+        return ""
+    return str(content)
+
+
+def _todos_to_markdown(todos):
+    """Serialize a todos list into a markdown task list for the copy button."""
+    lines = []
+    for todo in todos:
+        status = todo.get("status", "pending")
+        content = todo.get("content", "")
+        marker = _TODO_STATUS_MARKER.get(status, " ")
+        lines.append(f"- [{marker}] {content}")
+    return "\n".join(lines)
+
+
 def render_todo_write(tool_input, tool_id):
     todos = tool_input.get("todos", [])
     if not todos:
         return ""
-    return _macros.todo_list(todos, tool_id)
+    raw_source = _todos_to_markdown(todos)
+    return _macros.todo_list(todos, tool_id, raw_source)
 
 
 def render_write_tool(tool_input, tool_id):
@@ -837,11 +948,13 @@ def render_content_block(block):
         data = source.get("data", "")
         return _macros.image_block(media_type, data)
     elif block_type == "thinking":
-        content_html = render_markdown_text(block.get("thinking", ""))
-        return _macros.thinking(content_html)
+        raw_thinking = block.get("thinking", "")
+        content_html = render_markdown_text(raw_thinking)
+        return _macros.thinking(content_html, raw_thinking)
     elif block_type == "text":
-        content_html = render_markdown_text(block.get("text", ""))
-        return _macros.assistant_text(content_html)
+        raw_text = block.get("text", "")
+        content_html = render_markdown_text(raw_text)
+        return _macros.assistant_text(content_html, raw_text)
     elif block_type == "tool_use":
         tool_name = block.get("name", "Unknown tool")
         tool_input = block.get("input", {})
@@ -919,7 +1032,8 @@ def render_content_block(block):
             content_html = format_json(content)
         else:
             content_html = format_json(content)
-        return _macros.tool_result(content_html, is_error, has_images)
+        raw_source = _tool_result_raw_text(content)
+        return _macros.tool_result(content_html, is_error, has_images, raw_source)
     else:
         return format_json(block)
 
@@ -927,9 +1041,15 @@ def render_content_block(block):
 def render_user_message_content(message_data):
     content = message_data.get("content", "")
     if isinstance(content, str):
+        # Auto-suppress the inner copy button: when user message content is a
+        # single string, the outer .message-level button already covers it.
         if is_json_like(content):
-            return _macros.user_content(format_json(content))
-        return _macros.user_content(render_markdown_text(content))
+            return _macros.user_content(
+                format_json(content), content, suppress_copy_btn=True
+            )
+        return _macros.user_content(
+            render_markdown_text(content), content, suppress_copy_btn=True
+        )
     elif isinstance(content, list):
         return "".join(render_content_block(block) for block in content)
     return f"<p>{html.escape(str(content))}</p>"
@@ -1201,6 +1321,28 @@ details.continuation[open] summary { border-radius: 12px 12px 0 0; margin-bottom
 [data-theme="light"] #theme-toggle .theme-icon-sun { display: block; }
 [data-theme="light"] #theme-toggle .theme-icon-moon { display: none; }
 @media (max-width: 600px) { body { padding: 8px; } .message, .index-item { border-radius: 8px; } .message-content, .index-item-content { padding: 12px; } pre { font-size: 0.8rem; padding: 8px; } #search-box input { width: 120px; } #search-modal[open] { width: 95vw; height: 90vh; } #theme-toggle { width: 36px; height: 36px; top: 8px; right: 8px; } }
+/* Copy-to-clipboard buttons */
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.copy-btn { display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; margin-left: 6px; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--text-muted); cursor: pointer; opacity: 0.45; transition: opacity 120ms ease-out, background 120ms ease-out, border-color 120ms ease-out; vertical-align: middle; }
+.copy-btn:hover, .copy-btn:focus-visible { opacity: 1; background: var(--overlay-medium); border-color: var(--border-faint); outline: none; }
+.copy-btn:focus-visible { box-shadow: 0 0 0 2px var(--user-border); }
+.copy-btn .icon-copy { display: inline-block; }
+.copy-btn .icon-check { display: none; }
+.copy-btn.copied .icon-copy { display: none; }
+.copy-btn.copied .icon-check { display: inline-block; }
+.copy-btn.copied { opacity: 1; color: var(--write-tool-border); border-color: transparent; }
+.tool-use:hover .copy-btn, .file-tool:hover .copy-btn, .todo-list:hover .copy-btn, .thinking:hover .copy-btn, .message-header:hover .copy-btn, .commit-card:hover .copy-btn { opacity: 1; }
+.assistant-text, .user-content, .tool-result { position: relative; }
+.assistant-text > .copy-btn, .user-content > .copy-btn, .tool-result > .copy-btn { position: absolute; top: 6px; right: 6px; margin-left: 0; z-index: 1; }
+.assistant-text:hover > .copy-btn, .user-content:hover > .copy-btn, .tool-result:hover > .copy-btn { opacity: 1; }
+.commit-card .copy-btn { margin-left: 4px; vertical-align: baseline; padding: 1px 3px; }
+.code-block-wrap { position: relative; }
+.code-block-wrap > .copy-btn { position: absolute; top: 6px; right: 6px; margin-left: 0; z-index: 1; }
+.code-block-wrap:hover > .copy-btn { opacity: 1; }
+.copy-btn--inline { padding: 0 2px; margin: 0 0 0 2px; vertical-align: baseline; opacity: 0; pointer-events: none; transition: opacity 100ms ease-out; }
+code.copy-target--inline-code:hover + .copy-btn--inline, .copy-btn--inline:hover, .copy-btn--inline:focus-visible { opacity: 1; pointer-events: auto; }
+@media (hover: none) { code.copy-target--inline-code + .copy-btn--inline { opacity: 0; pointer-events: none; } code.copy-target--inline-code.revealed + .copy-btn--inline { opacity: 1; pointer-events: auto; } }
+@media (prefers-reduced-motion: reduce) { .copy-btn, .copy-btn--inline { transition: none; } }
 """
 
 JS = """
@@ -1248,6 +1390,154 @@ document.querySelectorAll('.truncatable').forEach(function(wrapper) {
     }
     window.addEventListener('storage', function(e) {
         if (e.key === 'theme') { applyTheme(e.newValue === 'light' ? 'light' : 'dark'); }
+    });
+})();
+(function() {
+    var NL = String.fromCharCode(10);
+    var COPY_SVG = '<svg class="icon-copy" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    var CHECK_SVG = '<svg class="icon-check" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+
+    function makeButton(b64, label) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'copy-btn';
+        if (b64) b.setAttribute('data-copy-src', b64);
+        b.setAttribute('title', label);
+        b.setAttribute('aria-label', label);
+        b.innerHTML = COPY_SVG + CHECK_SVG;
+        return b;
+    }
+
+    document.querySelectorAll('pre > code.copy-target--code-block').forEach(function(code) {
+        var pre = code.parentElement;
+        if (!pre) return;
+        if (pre.parentElement && pre.parentElement.classList.contains('code-block-wrap')) return;
+        var wrap = document.createElement('div');
+        wrap.className = 'code-block-wrap';
+        pre.parentNode.insertBefore(wrap, pre);
+        wrap.appendChild(pre);
+        wrap.appendChild(makeButton(code.getAttribute('data-copy-src') || '', 'Copy code'));
+    });
+
+    document.querySelectorAll('code.copy-target--inline-code').forEach(function(code) {
+        var btn = makeButton(code.getAttribute('data-copy-src') || '', 'Copy code');
+        btn.classList.add('copy-btn--inline');
+        code.parentNode.insertBefore(btn, code.nextSibling);
+        code.addEventListener('click', function() {
+            code.classList.add('revealed');
+            setTimeout(function() { code.classList.remove('revealed'); }, 3000);
+        });
+    });
+
+    function decodeB64(b64) {
+        if (!b64) return '';
+        try {
+            var bin = atob(b64);
+            var bytes = new Uint8Array(bin.length);
+            for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            return new TextDecoder('utf-8').decode(bytes);
+        } catch (err) { return ''; }
+    }
+
+    function announce(msg) {
+        var r = document.getElementById('copy-live-region');
+        if (!r) return;
+        r.textContent = '';
+        setTimeout(function() { r.textContent = msg; }, 50);
+    }
+
+    function primaryB64(el) {
+        var btn = el.querySelector('.copy-btn[data-copy-src]:not(.copy-btn--inline):not([data-copy-scope])');
+        return btn ? decodeB64(btn.getAttribute('data-copy-src') || '') : '';
+    }
+
+    function serializeBlock(el) {
+        if (!el || el.nodeType !== 1) return '';
+        var raw = primaryB64(el);
+        if (el.matches('.thinking')) return '**Thinking:**' + NL + NL + raw;
+        if (el.matches('.tool-use.bash-tool')) return '```bash' + NL + raw + NL + '```';
+        if (el.matches('.file-tool.write-tool')) return '```' + NL + raw + NL + '```';
+        if (el.matches('.file-tool.edit-tool')) return raw;
+        if (el.matches('.tool-use')) return '```json' + NL + raw + NL + '```';
+        if (el.matches('.todo-list')) return raw;
+        if (el.matches('.tool-result')) {
+            var prefix = el.classList.contains('tool-error') ? '[error] ' : '';
+            return '```text' + NL + prefix + raw + NL + '```';
+        }
+        return raw || (el.textContent || '').trim();
+    }
+
+    function serializeMessage(msgEl) {
+        if (!msgEl) return '';
+        var role = msgEl.classList.contains('user') ? 'User' :
+                   msgEl.classList.contains('assistant') ? 'Assistant' :
+                   msgEl.classList.contains('tool-reply') ? 'Tool Result' : 'Message';
+        var parts = ['## ' + role, ''];
+        var content = msgEl.querySelector('.message-content');
+        if (!content) return parts.join(NL);
+        Array.prototype.forEach.call(content.children, function(child) {
+            var part = serializeBlock(child);
+            if (part) { parts.push(part); parts.push(''); }
+        });
+        return parts.join(NL).replace(new RegExp(NL + '{3,}', 'g'), NL + NL).trim();
+    }
+
+    function stripCopyBtns(root) {
+        Array.prototype.forEach.call(root.querySelectorAll('.copy-btn'), function(b) { b.remove(); });
+        return root;
+    }
+
+    function htmlPayload(btn) {
+        if (btn.getAttribute('data-copy-scope') === 'message') {
+            var msg = btn.closest('.message');
+            return msg ? stripCopyBtns(msg.cloneNode(true)).outerHTML : '';
+        }
+        var wrap = btn.parentElement && btn.parentElement.classList.contains('code-block-wrap') ? btn.parentElement : null;
+        if (wrap) {
+            var pre = wrap.querySelector('pre');
+            return pre ? pre.outerHTML : '';
+        }
+        if (btn.classList.contains('copy-btn--inline')) {
+            return btn.previousElementSibling ? btn.previousElementSibling.outerHTML : '';
+        }
+        var block = btn.closest('.assistant-text, .user-content, .thinking, .tool-result, .commit-card, .tool-use, .file-tool, .todo-list');
+        return block ? stripCopyBtns(block.cloneNode(true)).outerHTML : '';
+    }
+
+    function plainPayload(btn) {
+        if (btn.getAttribute('data-copy-scope') === 'message') {
+            return serializeMessage(btn.closest('.message'));
+        }
+        return decodeB64(btn.getAttribute('data-copy-src') || '');
+    }
+
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.copy-btn');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var plain = plainPayload(btn);
+        var html = htmlPayload(btn);
+        var success = function() {
+            btn.classList.add('copied');
+            announce('Copied');
+            setTimeout(function() { btn.classList.remove('copied'); }, 1500);
+        };
+        if (navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem !== 'undefined') {
+            try {
+                var item = new ClipboardItem({
+                    'text/plain': new Blob([plain], {type: 'text/plain'}),
+                    'text/html': new Blob([html], {type: 'text/html'})
+                });
+                navigator.clipboard.write([item]).then(success).catch(function() {
+                    if (navigator.clipboard.writeText) navigator.clipboard.writeText(plain).then(success);
+                });
+                return;
+            } catch (err) {}
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(plain).then(success);
+        }
     });
 })();
 """
