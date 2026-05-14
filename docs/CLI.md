@@ -34,7 +34,7 @@ Pick a session from `~/.claude/projects/` via an interactive picker and convert 
 | `-a, --output-auto` | flag | off | Auto-name an output subdirectory by session filename. Use with `-o` as the parent, or alone (current directory). |
 | `--repo TEXT` | `owner/name` | auto-detected from `git push` output in the session log | GitHub repository for commit links. |
 | `--gist` | flag | off | After generation, upload HTML to a GitHub Gist and print a `gisthost.github.io` preview URL. |
-| `--json` | flag | off | Copy the original `.jsonl` source into the output directory alongside the HTML. |
+| `--json` / `--no-json` | flag | on | Copy the original `.jsonl` source into the output directory alongside the HTML (default: on; pass `--no-json` to suppress). |
 | `--open` | flag | implicit when no `-o`, no `--gist`, no `-a` | Open `index.html` in your default browser. |
 | `--limit INTEGER` | int | `10` | Maximum number of sessions shown in the picker. |
 | `--help` | flag | — | Show command help and exit. |
@@ -67,7 +67,7 @@ Positional argument:
 | `-a, --output-auto` | flag | off | Auto-name an output subdirectory by filename stem (or URL stem). |
 | `--repo TEXT` | `owner/name` | auto-detected from `git push` output in the session log | GitHub repository for commit links. |
 | `--gist` | flag | off | Upload to a Gist and print preview URL. |
-| `--json` | flag | off | Copy the source file into the output directory. |
+| `--json` / `--no-json` | flag | on | Copy the source file into the output directory (default: on; pass `--no-json` to suppress). |
 | `--open` | flag | implicit when no `-o`, no `--gist`, no `-a` | Open `index.html` after generation. |
 | `--help` | flag | — | Show command help and exit. |
 
@@ -99,7 +99,7 @@ Positional argument:
 | `--org-uuid TEXT` | UUID string | read from `~/.claude.json` | Organization UUID. |
 | `--repo TEXT` | `owner/name` | unset | Filters the picker to that repo and sets the default for commit links. |
 | `--gist` | flag | off | Upload to a Gist and print preview URL. |
-| `--json` | flag | off | Save fetched JSON as `<SESSION_ID>.json` in the output directory. |
+| `--json` / `--no-json` | flag | on | Save fetched JSON as `<SESSION_ID>.json` in the output directory (default: on; pass `--no-json` to suppress). |
 | `--open` | flag | implicit when no `-o`, no `--gist`, no `-a` | Open `index.html` after generation. |
 | `--help` | flag | — | Show command help and exit. |
 
@@ -166,7 +166,7 @@ These three single-session commands share the same output, repo, gist, json, and
 - `-a, --output-auto`
 - `--repo TEXT`
 - `--gist`
-- `--json`
+- `--json` / `--no-json`
 - `--open`
 
 `all` has its own surface — `-s`, `-o`, `--include-agents`, `--dry-run`, `--open`, `-q`.
