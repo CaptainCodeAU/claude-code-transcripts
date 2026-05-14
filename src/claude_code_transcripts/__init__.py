@@ -1901,10 +1901,10 @@ def cli():
     help="Upload to GitHub Gist and output a gisthost.github.io URL.",
 )
 @click.option(
-    "--json",
+    "--json/--no-json",
     "include_json",
-    is_flag=True,
-    help="Include the original JSONL session file in the output directory.",
+    default=True,
+    help="Include the original JSONL session file in the output directory (default: include; pass --no-json to suppress).",
 )
 @click.option(
     "--open",
@@ -2058,10 +2058,10 @@ def fetch_url_to_tempfile(url):
     help="Upload to GitHub Gist and output a gisthost.github.io URL.",
 )
 @click.option(
-    "--json",
+    "--json/--no-json",
     "include_json",
-    is_flag=True,
-    help="Include the original JSON session file in the output directory.",
+    default=True,
+    help="Include the original JSON session file in the output directory (default: include; pass --no-json to suppress).",
 )
 @click.option(
     "--open",
@@ -2373,10 +2373,10 @@ def generate_html_from_session_data(session_data, output_dir, github_repo=None):
     help="Upload to GitHub Gist and output a gisthost.github.io URL.",
 )
 @click.option(
-    "--json",
+    "--json/--no-json",
     "include_json",
-    is_flag=True,
-    help="Include the JSON session data in the output directory.",
+    default=True,
+    help="Save the fetched JSON session data in the output directory (default: save; pass --no-json to suppress).",
 )
 @click.option(
     "--open",

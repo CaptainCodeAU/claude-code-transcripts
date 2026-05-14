@@ -50,7 +50,7 @@ All commands support these options:
 - `--repo OWNER/NAME` - GitHub repo for commit links (auto-detected if not specified). For `web` command, also filters the session list.
 - `--open` - open the generated `index.html` in your default browser (default if no `-o` specified)
 - `--gist` - upload the generated HTML files to a GitHub Gist and output a preview URL
-- `--json` - include the original session file in the output directory
+- `--json` / `--no-json` - include the original session file in the output directory (default: include; use `--no-json` to suppress)
 
 The generated output includes:
 - `index.html` - an index page with a timeline of prompts and commits
@@ -144,10 +144,10 @@ claude-code-transcripts web SESSION_ABC123 -o ./transcripts -a
 
 ### Including the source file
 
-Use the `--json` option to include the original session file in the output directory:
+The original session file is included in the output directory by default:
 
 ```bash
-claude-code-transcripts json session.json -o ./my-transcript --json
+claude-code-transcripts json session.json -o ./my-transcript
 ```
 
 This will output:
@@ -155,7 +155,11 @@ This will output:
 JSON: ./my-transcript/session_ABC.json (245.3 KB)
 ```
 
-This is useful for archiving the source data alongside the HTML output.
+This is useful for archiving the source data alongside the HTML output. To suppress the source-file copy, pass `--no-json`:
+
+```bash
+claude-code-transcripts json session.json -o ./my-transcript --no-json
+```
 
 ### Converting from JSON/JSONL files
 

@@ -1276,6 +1276,38 @@ class TestSessionJsonOption:
         assert (output_dir / "sample_session.json").exists()
         assert not (output_dir / "session.json").exists()
 
+    def test_session_json_included_by_default(self, output_dir):
+        """Without any flag, json subcommand copies the source by default."""
+        from click.testing import CliRunner
+        from claude_code_transcripts import cli
+
+        fixture_path = Path(__file__).parent / "sample_session.json"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["json", str(fixture_path), "-o", str(output_dir)],
+        )
+
+        assert result.exit_code == 0
+        assert (output_dir / "sample_session.json").exists()
+
+    def test_session_no_json_suppresses_copy(self, output_dir):
+        """Passing --no-json suppresses the default source copy."""
+        from click.testing import CliRunner
+        from claude_code_transcripts import cli
+
+        fixture_path = Path(__file__).parent / "sample_session.json"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["json", str(fixture_path), "-o", str(output_dir), "--no-json"],
+        )
+
+        assert result.exit_code == 0
+        assert not (output_dir / "sample_session.json").exists()
+
 
 class TestImportJsonOption:
     """Tests for the import command --json option."""
@@ -1321,6 +1353,72 @@ class TestImportJsonOption:
         with open(json_file) as f:
             saved_data = json.load(f)
         assert saved_data == {"loglines": session_data["loglines"]}
+
+    def test_import_json_included_by_default(self, httpx_mock, output_dir):
+        """Without any flag, web subcommand saves the fetched session by default."""
+        from click.testing import CliRunner
+        from claude_code_transcripts import cli
+
+        fixture_path = Path(__file__).parent / "sample_session.json"
+        with open(fixture_path) as f:
+            session_data = json.load(f)
+
+        httpx_mock.add_response(
+            url="https://api.anthropic.com/v1/code/sessions/test-session-id/teleport-events?limit=1000",
+            json=_make_teleport_events_response(session_data),
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "web",
+                "test-session-id",
+                "--token",
+                "test-token",
+                "--org-uuid",
+                "test-org",
+                "-o",
+                str(output_dir),
+            ],
+        )
+
+        assert result.exit_code == 0
+        json_file = output_dir / "test-session-id.json"
+        assert json_file.exists()
+
+    def test_import_no_json_suppresses_copy(self, httpx_mock, output_dir):
+        """Passing --no-json suppresses the default JSON save."""
+        from click.testing import CliRunner
+        from claude_code_transcripts import cli
+
+        fixture_path = Path(__file__).parent / "sample_session.json"
+        with open(fixture_path) as f:
+            session_data = json.load(f)
+
+        httpx_mock.add_response(
+            url="https://api.anthropic.com/v1/code/sessions/test-session-id/teleport-events?limit=1000",
+            json=_make_teleport_events_response(session_data),
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "web",
+                "test-session-id",
+                "--token",
+                "test-token",
+                "--org-uuid",
+                "test-org",
+                "-o",
+                str(output_dir),
+                "--no-json",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert not (output_dir / "test-session-id.json").exists()
 
 
 class TestImportGistOption:
@@ -1790,6 +1888,70 @@ class TestLocalSessionCLI:
 
         assert result.exit_code == 0
         assert "No session selected" in result.output
+
+    def test_local_json_included_by_default(self, tmp_path, monkeypatch):
+        """Without any flag, local subcommand copies the source by default."""
+        from click.testing import CliRunner
+        from claude_code_transcripts import cli
+        import questionary
+
+        projects_dir = tmp_path / ".claude" / "projects" / "test-project"
+        projects_dir.mkdir(parents=True)
+        session_file = projects_dir / "session-default.jsonl"
+        session_file.write_text(
+            '{"type":"summary","summary":"Test"}\n'
+            '{"type":"user","timestamp":"2025-01-01T00:00:00Z","message":{"role":"user","content":"Hello"}}\n'
+        )
+
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        class MockSelect:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def ask(self):
+                return session_file
+
+        monkeypatch.setattr(questionary, "select", MockSelect)
+
+        output_dir = tmp_path / "output"
+        runner = CliRunner()
+        result = runner.invoke(cli, ["local", "-o", str(output_dir)])
+
+        assert result.exit_code == 0
+        assert (output_dir / "session-default.jsonl").exists()
+
+    def test_local_no_json_suppresses_copy(self, tmp_path, monkeypatch):
+        """Passing --no-json suppresses the default source copy."""
+        from click.testing import CliRunner
+        from claude_code_transcripts import cli
+        import questionary
+
+        projects_dir = tmp_path / ".claude" / "projects" / "test-project"
+        projects_dir.mkdir(parents=True)
+        session_file = projects_dir / "session-suppress.jsonl"
+        session_file.write_text(
+            '{"type":"summary","summary":"Test"}\n'
+            '{"type":"user","timestamp":"2025-01-01T00:00:00Z","message":{"role":"user","content":"Hello"}}\n'
+        )
+
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        class MockSelect:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def ask(self):
+                return session_file
+
+        monkeypatch.setattr(questionary, "select", MockSelect)
+
+        output_dir = tmp_path / "output"
+        runner = CliRunner()
+        result = runner.invoke(cli, ["local", "-o", str(output_dir), "--no-json"])
+
+        assert result.exit_code == 0
+        assert not (output_dir / "session-suppress.jsonl").exists()
 
 
 class TestOutputAutoOption:
