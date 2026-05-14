@@ -1,3 +1,8 @@
+{# Copy-to-clipboard button - inline SVG icons, base64 source in data-copy-src #}
+{% macro copy_button(raw_source, label, scope='') -%}
+<button type="button" class="copy-btn" data-copy-src="{{ raw_source|b64encode }}"{% if scope %} data-copy-scope="{{ scope }}"{% endif %} title="{{ label }}" aria-label="{{ label }}"><svg class="icon-copy" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><svg class="icon-check" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></button>
+{%- endmacro %}
+
 {# Pagination for regular pages #}
 {% macro pagination(current_page, total_pages) %}
 {% if total_pages <= 1 %}
@@ -47,8 +52,8 @@
 {% endmacro %}
 
 {# Todo list #}
-{% macro todo_list(todos, tool_id) %}
-<div class="todo-list" data-tool-id="{{ tool_id }}"><div class="todo-header"><span class="todo-header-icon">☰</span> Task List</div><ul class="todo-items">
+{% macro todo_list(todos, tool_id, raw_source='') %}
+<div class="todo-list" data-tool-id="{{ tool_id }}"><div class="todo-header"><span class="todo-header-icon">☰</span> Task List{{ copy_button(raw_source, 'Copy task list') }}</div><ul class="todo-items">
 {%- for todo in todos -%}
 {%- set status = todo.status|default('pending') -%}
 {%- set content = todo.content|default('') -%}
@@ -71,7 +76,7 @@
 {% macro write_tool(file_path, content, tool_id) %}
 {%- set filename = file_path.split('/')[-1] if '/' in file_path else file_path -%}
 <div class="file-tool write-tool" data-tool-id="{{ tool_id }}">
-<div class="file-tool-header write-header"><span class="file-tool-icon">📝</span> Write <span class="file-tool-path">{{ filename }}</span></div>
+<div class="file-tool-header write-header"><span class="file-tool-icon">📝</span> Write <span class="file-tool-path">{{ filename }}</span>{{ copy_button(content, 'Copy file content') }}</div>
 <div class="file-tool-fullpath">{{ file_path }}</div>
 <div class="truncatable"><div class="truncatable-content"><pre class="file-content">{{ content }}</pre></div><button class="expand-btn">Show more</button></div>
 </div>
@@ -80,12 +85,14 @@
 {# Edit tool #}
 {% macro edit_tool(file_path, old_string, new_string, replace_all, tool_id) %}
 {%- set filename = file_path.split('/')[-1] if '/' in file_path else file_path -%}
+{%- set rel_path = file_path.lstrip('/') -%}
+{%- set diff_payload = '--- a/' ~ rel_path ~ '\n+++ b/' ~ rel_path ~ '\n-' ~ old_string ~ '\n+' ~ new_string -%}
 <div class="file-tool edit-tool" data-tool-id="{{ tool_id }}">
-<div class="file-tool-header edit-header"><span class="file-tool-icon">✏️</span> Edit <span class="file-tool-path">{{ filename }}</span>{% if replace_all %} <span class="edit-replace-all">(replace all)</span>{% endif %}</div>
+<div class="file-tool-header edit-header"><span class="file-tool-icon">✏️</span> Edit <span class="file-tool-path">{{ filename }}</span>{% if replace_all %} <span class="edit-replace-all">(replace all)</span>{% endif %}{{ copy_button(diff_payload, 'Copy diff') }}</div>
 <div class="file-tool-fullpath">{{ file_path }}</div>
 <div class="truncatable"><div class="truncatable-content">
-<div class="edit-section edit-old"><div class="edit-label">−</div><pre class="edit-content">{{ old_string }}</pre></div>
-<div class="edit-section edit-new"><div class="edit-label">+</div><pre class="edit-content">{{ new_string }}</pre></div>
+<div class="edit-section edit-old"><div class="edit-label">−{{ copy_button(old_string, 'Copy old value') }}</div><pre class="edit-content">{{ old_string }}</pre></div>
+<div class="edit-section edit-new"><div class="edit-label">+{{ copy_button(new_string, 'Copy new value') }}</div><pre class="edit-content">{{ new_string }}</pre></div>
 </div><button class="expand-btn">Show more</button></div>
 </div>
 {%- endmacro %}
@@ -93,7 +100,7 @@
 {# Bash tool #}
 {% macro bash_tool(command, description, tool_id) %}
 <div class="tool-use bash-tool" data-tool-id="{{ tool_id }}">
-<div class="tool-header"><span class="tool-icon">$</span> Bash</div>
+<div class="tool-header"><span class="tool-icon">$</span> Bash{{ copy_button(command, 'Copy command') }}</div>
 {%- if description %}
 <div class="tool-description">{{ description }}</div>
 {%- endif -%}
@@ -103,7 +110,7 @@
 
 {# Generic tool use - input_json is pre-formatted so needs |safe #}
 {% macro tool_use(tool_name, description, input_json, tool_id) %}
-<div class="tool-use" data-tool-id="{{ tool_id }}"><div class="tool-header"><span class="tool-icon">⚙</span> {{ tool_name }}</div>
+<div class="tool-use" data-tool-id="{{ tool_id }}"><div class="tool-header"><span class="tool-icon">⚙</span> {{ tool_name }}{{ copy_button(input_json, 'Copy input') }}</div>
 {%- if description -%}
 <div class="tool-description">{{ description }}</div>
 {%- endif -%}
@@ -112,28 +119,28 @@
 
 {# Tool result - content_html is pre-rendered so needs |safe #}
 {# has_images=True disables truncation so images are always visible #}
-{% macro tool_result(content_html, is_error, has_images=False) %}
+{% macro tool_result(content_html, is_error, has_images=False, raw_source='') %}
 {%- set error_class = ' tool-error' if is_error else '' -%}
 {%- if has_images -%}
-<div class="tool-result{{ error_class }}">{{ content_html|safe }}</div>
+<div class="tool-result{{ error_class }}">{{ copy_button(raw_source, 'Copy result') }}{{ content_html|safe }}</div>
 {%- else -%}
-<div class="tool-result{{ error_class }}"><div class="truncatable"><div class="truncatable-content">{{ content_html|safe }}</div><button class="expand-btn">Show more</button></div></div>
+<div class="tool-result{{ error_class }}">{{ copy_button(raw_source, 'Copy result') }}<div class="truncatable"><div class="truncatable-content">{{ content_html|safe }}</div><button class="expand-btn">Show more</button></div></div>
 {%- endif -%}
 {%- endmacro %}
 
 {# Thinking block - content_html is pre-rendered markdown so needs |safe #}
-{% macro thinking(content_html) %}
-<div class="thinking"><div class="thinking-label">Thinking</div>{{ content_html|safe }}</div>
+{% macro thinking(content_html, raw_source='') %}
+<div class="thinking"><div class="thinking-label">Thinking{{ copy_button(raw_source, 'Copy thinking') }}</div>{{ content_html|safe }}</div>
 {%- endmacro %}
 
 {# Assistant text - content_html is pre-rendered markdown so needs |safe #}
-{% macro assistant_text(content_html) %}
-<div class="assistant-text">{{ content_html|safe }}</div>
+{% macro assistant_text(content_html, raw_source='') %}
+<div class="assistant-text">{{ copy_button(raw_source, 'Copy text') }}{{ content_html|safe }}</div>
 {%- endmacro %}
 
 {# User content - content_html is pre-rendered so needs |safe #}
-{% macro user_content(content_html) %}
-<div class="user-content">{{ content_html|safe }}</div>
+{% macro user_content(content_html, raw_source='', suppress_copy_btn=False) %}
+<div class="user-content">{%- if not suppress_copy_btn -%}{{ copy_button(raw_source, 'Copy text') }}{%- endif -%}{{ content_html|safe }}</div>
 {%- endmacro %}
 
 {# Image block with base64 data URL #}
@@ -143,17 +150,18 @@
 
 {# Commit card (in tool results) #}
 {% macro commit_card(commit_hash, commit_msg, github_repo) %}
+{%- set copy_payload = commit_hash ~ ' ' ~ commit_msg -%}
 {%- if github_repo -%}
 {%- set github_link = 'https://github.com/' ~ github_repo ~ '/commit/' ~ commit_hash -%}
-<div class="commit-card"><a href="{{ github_link }}"><span class="commit-card-hash">{{ commit_hash[:7] }}</span> {{ commit_msg }}</a></div>
+<div class="commit-card"><a href="{{ github_link }}"><span class="commit-card-hash">{{ commit_hash[:7] }}</span> {{ commit_msg }}</a>{{ copy_button(copy_payload, 'Copy commit reference') }}</div>
 {%- else -%}
-<div class="commit-card"><span class="commit-card-hash">{{ commit_hash[:7] }}</span> {{ commit_msg }}</div>
+<div class="commit-card"><span class="commit-card-hash">{{ commit_hash[:7] }}</span> {{ commit_msg }}{{ copy_button(copy_payload, 'Copy commit reference') }}</div>
 {%- endif %}
 {%- endmacro %}
 
 {# Message wrapper - content_html is pre-rendered so needs |safe #}
 {% macro message(role_class, role_label, msg_id, timestamp, content_html) %}
-<div class="message {{ role_class }}" id="{{ msg_id }}"><div class="message-header"><span class="role-label">{{ role_label }}</span><a href="#{{ msg_id }}" class="timestamp-link"><time datetime="{{ timestamp }}" data-timestamp="{{ timestamp }}">{{ timestamp }}</time></a></div><div class="message-content">{{ content_html|safe }}</div></div>
+<div class="message {{ role_class }}" id="{{ msg_id }}"><div class="message-header"><span class="role-label">{{ role_label }}</span><a href="#{{ msg_id }}" class="timestamp-link"><time datetime="{{ timestamp }}" data-timestamp="{{ timestamp }}">{{ timestamp }}</time></a>{{ copy_button('', 'Copy message', 'message') }}</div><div class="message-content">{{ content_html|safe }}</div></div>
 {%- endmacro %}
 
 {# Continuation wrapper - content_html is pre-rendered so needs |safe #}
