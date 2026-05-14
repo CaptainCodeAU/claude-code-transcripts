@@ -18,6 +18,7 @@ from claude_code_transcripts import (
     render_edit_tool,
     render_bash_tool,
     render_content_block,
+    render_user_message_content,
     analyze_conversation,
     format_tool_stats,
     is_tool_result_message,
@@ -221,6 +222,228 @@ class TestRenderFunctions:
         }
         result = render_bash_tool(tool_input, "tool-123")
         assert result == snapshot_html
+
+
+class TestCopyButtons:
+    """Tests for copy-to-clipboard buttons on rendered blocks."""
+
+    def test_bash_tool_has_copy_button(self):
+        """Bash tool block emits a copy button carrying the raw command."""
+        import base64
+
+        tool_input = {
+            "command": "pytest tests/ -v",
+            "description": "Run tests with verbose output",
+        }
+        result = render_bash_tool(tool_input, "tool-123")
+        expected_b64 = base64.b64encode(b"pytest tests/ -v").decode("ascii")
+        assert 'class="copy-btn"' in result
+        assert f'data-copy-src="{expected_b64}"' in result
+        assert 'aria-label="Copy command"' in result
+
+    def test_write_tool_has_copy_button(self):
+        """Write tool block emits a copy button carrying the raw file content."""
+        import base64
+
+        tool_input = {
+            "file_path": "/project/src/main.py",
+            "content": "def hello():\n    print('hi')\n",
+        }
+        result = render_write_tool(tool_input, "tool-123")
+        expected_b64 = base64.b64encode(b"def hello():\n    print('hi')\n").decode(
+            "ascii"
+        )
+        assert 'class="copy-btn"' in result
+        assert f'data-copy-src="{expected_b64}"' in result
+        assert 'aria-label="Copy file content"' in result
+
+    def test_edit_tool_has_three_copy_buttons(self):
+        """Edit tool block emits three copy buttons: diff, old value, new value."""
+        import base64
+
+        tool_input = {
+            "file_path": "/project/file.py",
+            "old_string": "old code here",
+            "new_string": "new code here",
+        }
+        result = render_edit_tool(tool_input, "tool-123")
+        expected_diff = (
+            "--- a/project/file.py\n"
+            "+++ b/project/file.py\n"
+            "-old code here\n"
+            "+new code here"
+        )
+        diff_b64 = base64.b64encode(expected_diff.encode("utf-8")).decode("ascii")
+        old_b64 = base64.b64encode(b"old code here").decode("ascii")
+        new_b64 = base64.b64encode(b"new code here").decode("ascii")
+        assert result.count('class="copy-btn"') == 3
+        assert f'data-copy-src="{diff_b64}"' in result
+        assert f'data-copy-src="{old_b64}"' in result
+        assert f'data-copy-src="{new_b64}"' in result
+        assert 'aria-label="Copy diff"' in result
+        assert 'aria-label="Copy old value"' in result
+        assert 'aria-label="Copy new value"' in result
+
+    def test_tool_use_generic_has_copy_button(self):
+        """Generic tool_use block emits a copy button carrying the JSON input."""
+        import base64
+        import json as _json
+
+        block = {
+            "type": "tool_use",
+            "name": "CustomTool",
+            "input": {"key": "value", "n": 42},
+            "id": "tool-456",
+        }
+        result = render_content_block(block)
+        expected_json = _json.dumps(
+            {"key": "value", "n": 42}, indent=2, ensure_ascii=False
+        )
+        expected_b64 = base64.b64encode(expected_json.encode("utf-8")).decode("ascii")
+        assert 'class="copy-btn"' in result
+        assert f'data-copy-src="{expected_b64}"' in result
+        assert 'aria-label="Copy input"' in result
+
+    def test_todo_list_has_copy_button(self):
+        """TodoWrite block emits a copy button with a markdown task list payload."""
+        import base64
+
+        tool_input = {
+            "todos": [
+                {"content": "First task", "status": "completed", "activeForm": "First"},
+                {
+                    "content": "Second task",
+                    "status": "in_progress",
+                    "activeForm": "Second",
+                },
+                {"content": "Third task", "status": "pending", "activeForm": "Third"},
+            ]
+        }
+        result = render_todo_write(tool_input, "tool-123")
+        expected_md = "- [x] First task\n- [→] Second task\n- [ ] Third task"
+        expected_b64 = base64.b64encode(expected_md.encode("utf-8")).decode("ascii")
+        assert 'class="copy-btn"' in result
+        assert f'data-copy-src="{expected_b64}"' in result
+        assert 'aria-label="Copy task list"' in result
+
+    def test_tool_result_has_copy_button(self):
+        """Tool result block emits a copy button carrying the raw result content."""
+        import base64
+
+        block = {
+            "type": "tool_result",
+            "content": "125 passed in 2.3s",
+            "is_error": False,
+        }
+        result = render_content_block(block)
+        expected_b64 = base64.b64encode(b"125 passed in 2.3s").decode("ascii")
+        assert 'class="copy-btn"' in result
+        assert f'data-copy-src="{expected_b64}"' in result
+        assert 'aria-label="Copy result"' in result
+
+    def test_commit_card_has_copy_button(self):
+        """Commit card emits a copy button with `<hash> <message>` payload."""
+        import base64
+
+        block = {
+            "type": "tool_result",
+            "content": "[main abc1234] Fix the thing\n",
+            "is_error": False,
+        }
+        result = render_content_block(block)
+        expected_payload = "abc1234 Fix the thing"
+        expected_b64 = base64.b64encode(expected_payload.encode("utf-8")).decode(
+            "ascii"
+        )
+        assert f'data-copy-src="{expected_b64}"' in result
+        assert 'aria-label="Copy commit reference"' in result
+
+    def test_thinking_has_copy_button(self):
+        """Thinking block emits a copy button carrying the raw thinking text."""
+        import base64
+
+        block = {"type": "thinking", "thinking": "Let me consider this carefully."}
+        result = render_content_block(block)
+        expected_b64 = base64.b64encode(b"Let me consider this carefully.").decode(
+            "ascii"
+        )
+        assert 'class="copy-btn"' in result
+        assert f'data-copy-src="{expected_b64}"' in result
+        assert 'aria-label="Copy thinking"' in result
+
+    def test_assistant_text_has_copy_button(self):
+        """Assistant text block emits a copy button carrying the raw markdown."""
+        import base64
+
+        block = {"type": "text", "text": "Here is the **answer**."}
+        result = render_content_block(block)
+        expected_b64 = base64.b64encode(b"Here is the **answer**.").decode("ascii")
+        assert 'class="copy-btn"' in result
+        assert f'data-copy-src="{expected_b64}"' in result
+        assert 'aria-label="Copy text"' in result
+
+    def test_user_content_macro_has_copy_button(self):
+        """user_content macro renders a copy button by default."""
+        import base64
+
+        from claude_code_transcripts import _macros
+
+        result = _macros.user_content("<p>Hello</p>", "Hello")
+        expected_b64 = base64.b64encode(b"Hello").decode("ascii")
+        assert 'class="copy-btn"' in result
+        assert f'data-copy-src="{expected_b64}"' in result
+        assert 'aria-label="Copy text"' in result
+
+    def test_user_content_macro_suppresses_button_when_flagged(self):
+        """user_content macro hides the copy button when suppress_copy_btn=True."""
+        from claude_code_transcripts import _macros
+
+        result = _macros.user_content("<p>Hello</p>", "Hello", suppress_copy_btn=True)
+        assert 'class="copy-btn"' not in result
+
+    def test_user_message_suppresses_inner_user_content_button(self):
+        """Rendering a user message via render_user_message_content suppresses
+        the redundant inner user_content button (auto-suppress rule)."""
+        result = render_user_message_content({"content": "Hello **world**"})
+        assert 'class="copy-btn"' not in result
+
+    def test_message_has_copy_button(self):
+        """Every .message renders a copy button in its header with scope='message'."""
+        from claude_code_transcripts import _macros
+
+        result = _macros.message(
+            "user", "User", "msg-1", "2026-01-01T12:00:00", "<p>Hello</p>"
+        )
+        assert 'class="copy-btn"' in result
+        assert 'data-copy-scope="message"' in result
+        assert 'aria-label="Copy message"' in result
+
+    def test_markdown_fenced_code_has_copy_data(self):
+        """Fenced code blocks get a copy-target class + data-copy-src attribute."""
+        import base64
+        import re
+
+        md_text = "```python\ndef hello():\n    return 'hi'\n```"
+        result = render_markdown_text(md_text)
+        assert "copy-target--code-block" in result
+        match = re.search(r'<code[^>]*data-copy-src="([^"]+)"', result)
+        assert match is not None
+        decoded = base64.b64decode(match.group(1)).decode("utf-8")
+        assert "def hello():" in decoded
+        assert "return 'hi'" in decoded
+
+    def test_markdown_inline_code_has_copy_data(self):
+        """Inline `code` spans get a copy-target class + data-copy-src attribute."""
+        import base64
+        import re
+
+        md_text = "Run `uv run pytest` to test."
+        result = render_markdown_text(md_text)
+        assert "copy-target--inline-code" in result
+        match = re.search(r'<code[^>]*data-copy-src="([^"]+)"', result)
+        assert match is not None
+        decoded = base64.b64decode(match.group(1)).decode("utf-8")
+        assert decoded == "uv run pytest"
 
 
 class TestRenderContentBlock:
