@@ -783,6 +783,20 @@ def is_json_like(text):
     )
 
 
+def is_task_notification(content):
+    """Detect background-task completion entries injected by Claude Code.
+
+    These arrive as type:user entries whose message.content is a string
+    beginning with `<task-notification>`. They are machine-generated, not
+    human prompts, so they must not be classified as User messages, must
+    not start new conversation blocks, and must not appear as index items.
+    See simonw/claude-code-transcripts#99.
+    """
+    return isinstance(content, str) and content.lstrip().startswith(
+        "<task-notification>"
+    )
+
+
 def render_todo_write(tool_input, tool_id):
     todos = tool_input.get("todos", [])
     if not todos:
@@ -1025,8 +1039,10 @@ def render_message(log_type, message_json, timestamp):
         return ""
     if log_type == "user":
         content_html = render_user_message_content(message_data)
-        # Check if this is a tool result message
-        if is_tool_result_message(message_data):
+        # Check if this is a tool result or a background-task notification
+        if is_tool_result_message(message_data) or is_task_notification(
+            message_data.get("content", "")
+        ):
             role_class, role_label = "tool-reply", "Tool reply"
         else:
             role_class, role_label = "user", "User"
@@ -1404,7 +1420,7 @@ def generate_html(json_path, output_dir, github_repo=None):
         if log_type == "user":
             content = message_data.get("content", "")
             text = extract_text_from_content(content)
-            if text:
+            if text and not is_task_notification(content):
                 is_user_prompt = True
                 user_text = text
         if is_user_prompt:
@@ -1878,7 +1894,7 @@ def generate_html_from_session_data(session_data, output_dir, github_repo=None):
         if log_type == "user":
             content = message_data.get("content", "")
             text = extract_text_from_content(content)
-            if text:
+            if text and not is_task_notification(content):
                 is_user_prompt = True
                 user_text = text
         if is_user_prompt:
