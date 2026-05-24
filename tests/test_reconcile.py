@@ -66,6 +66,10 @@ class TestParseArgs:
         args = parse_args(["-v", "/some/path"])
         assert args.verbose is True
 
+    def test_cleanup_flag(self):
+        args = parse_args(["--cleanup", "/some/path"])
+        assert args.cleanup is True
+
     def test_no_path_exits(self):
         with pytest.raises(SystemExit):
             parse_args([])
@@ -925,6 +929,62 @@ class TestMainDryRun:
 
         assert (proj / "index.html").exists()
         assert (tmp_path / "index.html").exists()
+
+    def test_cleanup_deletes_duplicates_and_empties(self, tmp_path, capsys):
+        uuid_dup = "aaaaaaaa-0000-0000-0000-000000000001"
+        orphan = _make_uuid_folder(tmp_path, uuid_dup)
+        proj = tmp_path / "CaptainCodeAU-My-Project"
+        proj.mkdir()
+        organized = proj / uuid_dup
+        organized.mkdir()
+        (organized / f"{uuid_dup}.jsonl").write_text(
+            (orphan / f"{uuid_dup}.jsonl").read_text()
+        )
+
+        uuid_empty = "bbbbbbbb-0000-0000-0000-000000000002"
+        empty_folder = tmp_path / uuid_empty
+        empty_folder.mkdir()
+
+        main(["--cleanup", "--no-reindex", "--yes", str(tmp_path)])
+
+        assert not orphan.exists()
+        assert not empty_folder.exists()
+        assert organized.exists()
+        captured = capsys.readouterr()
+        assert "Cleaning up" in captured.out
+
+    def test_cleanup_dry_run_preserves_folders(self, tmp_path, capsys):
+        uuid_dup = "aaaaaaaa-0000-0000-0000-000000000001"
+        orphan = _make_uuid_folder(tmp_path, uuid_dup)
+        proj = tmp_path / "CaptainCodeAU-My-Project"
+        proj.mkdir()
+        organized = proj / uuid_dup
+        organized.mkdir()
+        (organized / f"{uuid_dup}.jsonl").write_text(
+            (orphan / f"{uuid_dup}.jsonl").read_text()
+        )
+
+        main(["--cleanup", "--dry-run", "--no-reindex", "--yes", str(tmp_path)])
+
+        assert orphan.exists()
+        captured = capsys.readouterr()
+        assert "would delete" in captured.out
+
+    def test_cleanup_report_shows_counts(self, tmp_path, capsys):
+        uuid_dup = "aaaaaaaa-0000-0000-0000-000000000001"
+        orphan = _make_uuid_folder(tmp_path, uuid_dup)
+        proj = tmp_path / "CaptainCodeAU-My-Project"
+        proj.mkdir()
+        organized = proj / uuid_dup
+        organized.mkdir()
+        (organized / f"{uuid_dup}.jsonl").write_text(
+            (orphan / f"{uuid_dup}.jsonl").read_text()
+        )
+
+        main(["--cleanup", "--no-reindex", "--yes", str(tmp_path)])
+
+        captured = capsys.readouterr()
+        assert "Deleted duplicates" in captured.out
 
     @patch("reconcile_sessions.subprocess")
     def test_no_reindex_skips_index_rebuild(self, mock_subprocess, tmp_path, capsys):

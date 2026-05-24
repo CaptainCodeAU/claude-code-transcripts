@@ -65,6 +65,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Skip interactive confirmations.",
     )
     parser.add_argument(
+        "--cleanup",
+        action="store_true",
+        help="Delete verified duplicate and empty orphan folders after reconciliation.",
+    )
+    parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -593,8 +598,12 @@ class ReconciliationReport:
     already_organized: int = 0
     skipped_empty: int = 0
     failed: int = 0
+    cleaned_duplicates: int = 0
+    cleaned_empty: int = 0
     new_projects: list[str] = field(default_factory=list)
     outliers: list[tuple[str, str]] = field(default_factory=list)
+    duplicate_paths: list[Path] = field(default_factory=list)
+    empty_paths: list[Path] = field(default_factory=list)
     projects_affected: set[str] = field(default_factory=set)
     reindexed: bool = False
     elapsed_seconds: float = 0.0
@@ -662,6 +671,18 @@ def format_report(report: ReconciliationReport) -> str:
         for uuid, reason in report.outliers:
             lines.append(f"    - {uuid}: {reason}")
 
+    if report.cleaned_duplicates or report.cleaned_empty:
+        lines.append("")
+        lines.append(f"  {BOLD}Cleanup:{RESET}")
+        if report.cleaned_duplicates:
+            lines.append(
+                f"    Deleted duplicates:   {GREEN}{report.cleaned_duplicates:>4}{RESET}"
+            )
+        if report.cleaned_empty:
+            lines.append(
+                f"    Deleted empty:        {GREEN}{report.cleaned_empty:>4}{RESET}"
+            )
+
     if report.elapsed_seconds > 0:
         lines.append(f"  Elapsed: {CYAN}{report.elapsed_seconds:.1f}s{RESET}")
     lines.append("")
@@ -702,6 +723,7 @@ def _tally_result(
 ) -> None:
     if result.is_duplicate:
         report.already_organized += 1
+        report.duplicate_paths.append(result.source)
         return
     if result.replaced_organized:
         report.replaced += 1
@@ -823,6 +845,7 @@ def main(argv: list[str] | None = None) -> None:
         # Flag Category C + D
         for folder in categories[Category.C_EMPTY]:
             report.skipped_empty += 1
+            report.empty_paths.append(folder.path)
             report.outliers.append((folder.path.name, "Empty folder"))
 
         for folder in categories[Category.D_OTHER]:
@@ -839,6 +862,34 @@ def main(argv: list[str] | None = None) -> None:
                 report.outliers.append(
                     (folder.path.name, "Unexpected content (unreadable)")
                 )
+
+    # Cleanup verified duplicates and empties
+    if args.cleanup and not args.dry_run:
+        to_delete = report.duplicate_paths + report.empty_paths
+        if to_delete:
+            print(
+                f"\n{BOLD}Cleaning up {CYAN}{len(to_delete)}{RESET}{BOLD} verified duplicate/empty folders...{RESET}"
+            )
+            if confirm(
+                f"Delete {len(to_delete)} folders? This cannot be undone.",
+                args.yes,
+            ):
+                for p in to_delete:
+                    try:
+                        if p.exists():
+                            shutil.rmtree(str(p))
+                            if p in report.duplicate_paths:
+                                report.cleaned_duplicates += 1
+                            else:
+                                report.cleaned_empty += 1
+                    except OSError as e:
+                        report.outliers.append((p.name, f"Cleanup failed: {e}"))
+    elif args.cleanup and args.dry_run:
+        count = len(report.duplicate_paths) + len(report.empty_paths)
+        if count:
+            print(
+                f"\n{YELLOW}--cleanup with --dry-run: would delete {count} folders{RESET}"
+            )
 
     # Reindex (default unless --no-reindex)
     if not args.no_reindex:
