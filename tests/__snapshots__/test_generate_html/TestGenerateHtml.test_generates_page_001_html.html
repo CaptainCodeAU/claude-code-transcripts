@@ -102,11 +102,12 @@ details.continuation { margin-bottom: 16px; }
 details.continuation summary { cursor: pointer; padding: 12px 16px; background: var(--user-bg); border-left: 4px solid var(--user-border); border-radius: 12px; font-weight: 500; color: var(--text-muted); }
 details.continuation summary:hover { background: var(--user-hover-overlay); }
 details.continuation[open] summary { border-radius: 12px 12px 0 0; margin-bottom: 0; }
-.index-item { margin-bottom: 16px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px var(--shadow-color); background: var(--user-bg); border-left: 4px solid var(--user-border); }
+.index-item { position: relative; margin-bottom: 16px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px var(--shadow-color); background: var(--user-bg); border-left: 4px solid var(--user-border); }
 .index-item a { display: block; text-decoration: none; color: inherit; }
 .index-item a:hover { background: var(--user-hover-overlay); }
-.index-item-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: var(--overlay-subtle); font-size: 0.85rem; }
+.index-item-header { display: flex; align-items: center; padding: 8px 16px; background: var(--overlay-subtle); font-size: 0.85rem; }
 .index-item-number { font-weight: 600; color: var(--user-border); }
+.index-item-header time { flex: 1; text-align: center; }
 .index-item-content { padding: 16px; }
 .index-item-stats { padding: 8px 16px 12px 32px; font-size: 0.85rem; color: var(--text-muted); border-top: 1px solid var(--border-faint); }
 .index-item-commit { margin-top: 6px; padding: 4px 8px; background: var(--commit-bg); border-radius: 4px; font-size: 0.85rem; color: var(--commit-hash); }
@@ -115,13 +116,13 @@ details.continuation[open] summary { border-radius: 12px 12px 0 0; margin-bottom
 .commit-card a { text-decoration: none; color: var(--commit-text); display: block; }
 .commit-card a:hover { color: var(--commit-hash-hover); }
 .commit-card-hash { font-family: monospace; color: var(--commit-hash); font-weight: 600; margin-right: 8px; }
-.index-commit { margin-bottom: 12px; padding: 10px 16px; background: var(--commit-bg); border-left: 4px solid var(--commit-border); border-radius: 8px; box-shadow: 0 1px 2px var(--shadow-color); }
+.index-commit { position: relative; margin-bottom: 12px; padding: 10px 16px; background: var(--commit-bg); border-left: 4px solid var(--commit-border); border-radius: 8px; box-shadow: 0 1px 2px var(--shadow-color); }
 .index-commit a { display: block; text-decoration: none; color: inherit; }
 .index-commit a:hover { background: var(--commit-hover-overlay); margin: -10px -16px; padding: 10px 16px; border-radius: 8px; }
 .index-commit-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; margin-bottom: 4px; }
 .index-commit-hash { font-family: monospace; color: var(--commit-hash); font-weight: 600; }
 .index-commit-msg { color: var(--commit-text); }
-.index-item-long-text { margin-top: 8px; padding: 12px; background: var(--card-bg); border-radius: 8px; border-left: 3px solid var(--assistant-border); }
+.index-item-long-text { position: relative; margin-top: 8px; padding: 12px; background: var(--card-bg); border-radius: 8px; border-left: 3px solid var(--assistant-border); }
 .index-item-long-text .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--card-bg)); }
 .index-item-long-text-content { color: var(--text-color); }
 #search-box { display: none; align-items: center; gap: 8px; }
@@ -186,6 +187,8 @@ details.continuation[open] summary { border-radius: 12px 12px 0 0; margin-bottom
 .assistant-text > .copy-btn, .user-content > .copy-btn, .tool-result > .copy-btn { position: absolute; top: 6px; right: 6px; margin-left: 0; z-index: 1; }
 .assistant-text:hover > .copy-btn, .user-content:hover > .copy-btn, .tool-result:hover > .copy-btn { opacity: 1; }
 .commit-card .copy-btn { margin-left: 4px; vertical-align: baseline; padding: 1px 3px; }
+.index-item > .copy-btn, .index-commit > .copy-btn, .index-item-long-text > .copy-btn { position: absolute; top: 6px; right: 6px; margin-left: 0; z-index: 1; }
+.index-item:hover > .copy-btn, .index-commit:hover > .copy-btn, .index-item-long-text:hover > .copy-btn { opacity: 1; }
 .code-block-wrap { position: relative; }
 .code-block-wrap > .copy-btn { position: absolute; top: 6px; right: 6px; margin-left: 0; z-index: 1; }
 .code-block-wrap:hover > .copy-btn { opacity: 1; }
@@ -356,11 +359,9 @@ test_subtract - AssertionError: expected 5 but got None</pre></div><button class
 document.querySelectorAll('time[data-timestamp]').forEach(function(el) {
     const timestamp = el.getAttribute('data-timestamp');
     const date = new Date(timestamp);
-    const now = new Date();
-    const isToday = date.toDateString() === now.toDateString();
-    const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    if (isToday) { el.textContent = timeStr; }
-    else { el.textContent = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + timeStr; }
+    const dateStr = date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    el.textContent = dateStr + ', ' + timeStr;
 });
 document.querySelectorAll('pre.json').forEach(function(el) {
     let text = el.textContent;
