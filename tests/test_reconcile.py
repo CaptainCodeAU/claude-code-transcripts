@@ -892,6 +892,39 @@ class TestMainDryRun:
         captured = capsys.readouterr()
         assert "Elapsed" in captured.out
 
+    def test_archive_summary_shown(self, tmp_path, capsys):
+        proj = tmp_path / "MyProject"
+        proj.mkdir()
+        session = proj / "aaaaaaaa-0000-0000-0000-000000000001"
+        session.mkdir()
+        (session / "aaaaaaaa-0000-0000-0000-000000000001.jsonl").write_text(
+            '{"type":"user","cwd":"/test","message":{"content":"hello"}}\n'
+        )
+        _make_uuid_folder(tmp_path, "bbbbbbbb-0000-0000-0000-000000000002")
+
+        main(["--dry-run", "--no-reindex", "--yes", str(tmp_path)])
+
+        captured = capsys.readouterr()
+        assert "Archive:" in captured.out
+        assert "Projects:" in captured.out
+        assert "Sessions:" in captured.out
+
+    def test_clean_archive_shows_summary(self, tmp_path, capsys):
+        proj = tmp_path / "MyProject"
+        proj.mkdir()
+        session = proj / "aaaaaaaa-0000-0000-0000-000000000001"
+        session.mkdir()
+        (session / "aaaaaaaa-0000-0000-0000-000000000001.jsonl").write_text(
+            '{"type":"user","cwd":"/test","message":{"content":"hello"}}\n'
+        )
+
+        with pytest.raises(SystemExit):
+            main(["--no-reindex", "--yes", str(tmp_path)])
+
+        captured = capsys.readouterr()
+        assert "Archive:" in captured.out
+        assert "clean" in captured.out.lower()
+
     def test_no_orphans_with_no_reindex_exits(self, tmp_path, capsys):
         (tmp_path / "SomeProject").mkdir()
 

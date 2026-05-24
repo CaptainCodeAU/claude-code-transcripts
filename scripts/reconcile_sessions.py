@@ -748,6 +748,14 @@ def _tally_result(
         )
 
 
+def print_archive_summary(archive_path: Path) -> None:
+    projects = scan_archive_for_projects(archive_path)
+    total_sessions = sum(len(p["sessions"]) for p in projects)
+    print(f"{BOLD}Archive:{RESET} {archive_path}")
+    print(f"  Projects: {CYAN}{len(projects)}{RESET}")
+    print(f"  Sessions: {CYAN}{total_sessions:,}{RESET}")
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     archive_path = Path(args.path).resolve()
@@ -756,11 +764,17 @@ def main(argv: list[str] | None = None) -> None:
         print(f"{RED}Error: {archive_path} is not a directory{RESET}", file=sys.stderr)
         sys.exit(1)
 
+    print()
+    print_archive_summary(archive_path)
+
     uuid_folders = find_uuid_folders(archive_path)
 
     if not uuid_folders and args.no_reindex:
-        print(f"{GREEN}No orphan UUID folders found at root level.{RESET}")
+        print(f"\n{GREEN}No orphan folders found. Archive is clean.{RESET}")
         sys.exit(0)
+
+    if not uuid_folders:
+        print(f"\n{GREEN}No orphan folders found. Archive is clean.{RESET}")
 
     report = ReconciliationReport()
     start_time = time.monotonic()
