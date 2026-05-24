@@ -244,6 +244,7 @@ Positional argument:
 |---|---|---|---|
 | `--dry-run` | flag | off | Show what would be done without making changes. |
 | `--no-reindex` | flag | off | Skip rebuilding project and master `index.html` pages after reconciliation. By default, all indexes are rebuilt. |
+| `--cleanup` | flag | off | Delete verified duplicate and empty orphan folders after reconciliation. Prompts for confirmation (skippable with `--yes`). Respects `--dry-run`. |
 | `--yes` | flag | off | Skip interactive confirmations. |
 | `--verbose, -v` | flag | off | Show detailed error output on failures. In `--dry-run` mode, lists each session's target project with status tags (`[DUPLICATE]`, `[NEW]`, `[REPLACE]`, `[UNKNOWN]`). |
 | `--help` | flag | -- | Show command help and exit. |
@@ -255,7 +256,8 @@ Positional argument:
 3. **Derive project** from JSONL `cwd` field or HTML file path references. Sessions that can't be matched go to `unknown-project/`.
 4. **Compare duplicates** when the target already exists: compares JSONL file sizes (larger = more complete, since JSONL is append-only). If the orphan is newer, it replaces the organized copy. If sizes match, the orphan is marked as already organized.
 5. **Move** the orphan into the project directory, regenerating HTML from JSONL if available.
-6. **Rebuild indexes** (unless `--no-reindex`): scans the archive and regenerates all project and master `index.html` pages.
+6. **Cleanup** (with `--cleanup`): delete verified duplicate folders (JSONL sizes match) and empty folders from the archive root.
+7. **Rebuild indexes** (unless `--no-reindex`): scans the archive and regenerates all project and master `index.html` pages.
 
 ### Report
 
@@ -292,6 +294,9 @@ uv run python scripts/reconcile_sessions.py ~/CODE/my-claude-code-transcripts/
 
 # Run without rebuilding indexes
 uv run python scripts/reconcile_sessions.py --no-reindex ~/CODE/my-claude-code-transcripts/
+
+# Reconcile and clean up verified duplicates + empties
+uv run python scripts/reconcile_sessions.py --cleanup ~/CODE/my-claude-code-transcripts/
 
 # Non-interactive (skip confirmations)
 uv run python scripts/reconcile_sessions.py --yes ~/CODE/my-claude-code-transcripts/

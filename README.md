@@ -238,6 +238,9 @@ uv run python scripts/reconcile_sessions.py --dry-run --verbose ~/CODE/my-claude
 # Run for real (reconcile + rebuild indexes):
 uv run python scripts/reconcile_sessions.py ~/CODE/my-claude-code-transcripts/
 
+# Also clean up verified duplicates and empty folders:
+uv run python scripts/reconcile_sessions.py --cleanup ~/CODE/my-claude-code-transcripts/
+
 # Skip index rebuilding:
 uv run python scripts/reconcile_sessions.py --no-reindex ~/CODE/my-claude-code-transcripts/
 ```
