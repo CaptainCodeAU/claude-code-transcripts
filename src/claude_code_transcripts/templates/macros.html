@@ -140,7 +140,7 @@
 
 {# User content - content_html is pre-rendered so needs |safe #}
 {% macro user_content(content_html, raw_source='', suppress_copy_btn=False) %}
-<div class="user-content">{%- if not suppress_copy_btn -%}{{ copy_button(raw_source, 'Copy text') }}{%- endif -%}{{ content_html|safe }}</div>
+<div class="user-content"{% if suppress_copy_btn and raw_source %} data-copy-src="{{ raw_source|b64encode }}"{% endif %}>{%- if not suppress_copy_btn -%}{{ copy_button(raw_source, 'Copy text') }}{%- endif -%}{{ content_html|safe }}</div>
 {%- endmacro %}
 
 {# Image block with base64 data URL #}
