@@ -150,6 +150,85 @@ class TestRenderFunctions:
         assert render_markdown_text("") == ""
         assert render_markdown_text(None) == ""
 
+    def test_render_markdown_list_without_preceding_blank_line(self):
+        """Lists immediately following text (no blank line) should render as <ul>."""
+        result = render_markdown_text("State observed:\n- item one\n- item two")
+        assert "<ul>" in result
+        assert "<li>" in result
+        assert "item one" in result
+        assert "item two" in result
+
+    def test_render_markdown_ordered_list_without_preceding_blank_line(self):
+        """Ordered lists immediately following text should render as <ol>."""
+        result = render_markdown_text("Steps:\n1. first\n2. second")
+        assert "<ol>" in result
+        assert "<li>" in result
+        assert "first" in result
+
+    def test_render_markdown_list_with_preceding_blank_line_unchanged(self):
+        """Lists that already have a blank line before them still work."""
+        result = render_markdown_text("Intro text.\n\n- item one\n- item two")
+        assert "<ul>" in result
+        assert "<li>" in result
+
+    def test_render_markdown_consecutive_list_items_no_extra_blanks(self):
+        """Consecutive list items should not get blank lines inserted between them."""
+        result = render_markdown_text("Header:\n- a\n- b\n- c")
+        assert result.count("<li>") == 3
+
+    def test_render_markdown_strikethrough(self):
+        """Strikethrough ~~text~~ should render as <del>."""
+        result = render_markdown_text("This is ~~deleted~~ text.")
+        assert "<del>" in result
+        assert "deleted" in result
+
+    def test_render_markdown_task_list(self):
+        """Task lists with - [ ] and - [x] should render with checkboxes."""
+        result = render_markdown_text("Tasks:\n\n- [ ] todo\n- [x] done")
+        assert 'type="checkbox"' in result
+        assert "todo" in result
+        assert "done" in result
+
+    def test_render_markdown_preserves_bold_and_code(self):
+        """Existing bold and inline code rendering still works."""
+        result = render_markdown_text("**bold** and `code`")
+        assert "<strong>bold</strong>" in result
+        assert "code" in result
+
+    def test_render_markdown_no_blank_lines_inside_fenced_code(self):
+        """The list preprocessor must not insert blank lines inside fenced code blocks."""
+        md = "```\nSome intro:\n- item a\n- item b\n```"
+        result = render_markdown_text(md)
+        assert "<ul>" not in result
+        assert "<li>" not in result
+        assert "- item a" in result
+        assert "intro:\n- item" in result or "intro:\n- item" in result
+
+    def test_render_markdown_no_extra_blanks_in_code_block(self):
+        """Preprocessor must not add blank lines inside code blocks, altering output."""
+        md = "```\nText:\n- a\n- b\n```"
+        result = render_markdown_text(md)
+        assert "Text:\n- a" in result
+
+    def test_render_markdown_list_after_code_block_still_fixed(self):
+        """Lists after a closed code block should still get the blank-line fix."""
+        md = "```\ncode here\n```\nResults:\n- one\n- two"
+        result = render_markdown_text(md)
+        assert "<ul>" in result
+        assert "<li>" in result
+
+    def test_render_markdown_orphan_trailing_fence_stripped(self):
+        """An orphan opening fence at the end of content should not render as text."""
+        md = "Some text.\n\n```"
+        result = render_markdown_text(md)
+        assert "```" not in result
+
+    def test_render_markdown_headings_in_assistant_text(self):
+        """Markdown headings render as HTML heading tags."""
+        result = render_markdown_text("## Section Title\n\nSome text.")
+        assert "<h2>" in result
+        assert "Section Title" in result
+
     def test_format_json(self, snapshot_html):
         """Test JSON formatting."""
         result = format_json({"key": "value", "number": 42, "nested": {"a": 1}})
@@ -400,6 +479,32 @@ class TestCopyButtons:
 
         result = _macros.user_content("<p>Hello</p>", "Hello", suppress_copy_btn=True)
         assert 'class="copy-btn"' not in result
+
+    def test_user_content_stores_raw_source_when_button_suppressed(self):
+        """When copy button is suppressed, raw source is stored on the div
+        as data-copy-src so message-level copy can find it."""
+        import base64
+
+        from claude_code_transcripts import _macros
+
+        raw = "Hello **world**"
+        result = _macros.user_content(
+            "<p>Hello <strong>world</strong></p>", raw, suppress_copy_btn=True
+        )
+        expected_b64 = base64.b64encode(raw.encode("utf-8")).decode("ascii")
+        assert 'class="copy-btn"' not in result
+        assert f'data-copy-src="{expected_b64}"' in result
+
+    def test_user_message_stores_raw_source_for_message_copy(self):
+        """User message content stores raw markdown on the user-content div
+        for message-level copy serialization even though the button is suppressed."""
+        import base64
+
+        raw = "Hello **world** with `code`"
+        result = render_user_message_content({"content": raw})
+        expected_b64 = base64.b64encode(raw.encode("utf-8")).decode("ascii")
+        assert 'class="copy-btn"' not in result
+        assert f'data-copy-src="{expected_b64}"' in result
 
     def test_user_message_suppresses_inner_user_content_button(self):
         """Rendering a user message via render_user_message_content suppresses
