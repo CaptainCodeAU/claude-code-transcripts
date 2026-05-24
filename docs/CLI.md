@@ -12,6 +12,7 @@ For a high-level overview, see the project [README](../README.md). For ready-mad
 | [`json`](#json) | a local path or `http(s)` URL | temp dir | yes — unless `-o`, `--gist`, or `-a` is set |
 | [`web`](#web) | Claude API (`SESSION_ID` or interactive picker) | temp dir | yes — unless `-o`, `--gist`, or `-a` is set |
 | [`all`](#all) | a directory tree of project folders | `./claude-archive` | no — only with explicit `--open` |
+| [`reconcile`](#reconcile) (standalone script) | orphan UUID folders in an archive dir | in-place | no |
 
 Global:
 
@@ -223,6 +224,77 @@ Preview an archive build without writing files:
 
 ```bash
 claude-code-transcripts all -s ~/.claude/projects -o ~/my-claude-code-transcripts --dry-run
+```
+
+## `reconcile`
+
+Synopsis:
+
+```bash
+uv run python scripts/reconcile_sessions.py [OPTIONS] PATH
+```
+
+Organize orphan UUID-named session folders sitting at the root of an archive directory into their correct project subdirectories. This is a standalone Python script (not a CLI subcommand) that imports from the `claude_code_transcripts` package.
+
+Positional argument:
+
+- `PATH` — path to the transcript archive directory (e.g., `~/CODE/my-claude-code-transcripts/`).
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `--dry-run` | flag | off | Show what would be done without making changes. |
+| `--no-reindex` | flag | off | Skip rebuilding project and master `index.html` pages after reconciliation. By default, all indexes are rebuilt. |
+| `--yes` | flag | off | Skip interactive confirmations. |
+| `--verbose, -v` | flag | off | Show detailed error output on failures. In `--dry-run` mode, lists each session's target project with status tags (`[DUPLICATE]`, `[NEW]`, `[REPLACE]`, `[UNKNOWN]`). |
+| `--help` | flag | -- | Show command help and exit. |
+
+### How it works
+
+1. **Scan** the archive root for UUID-named directories (orphans).
+2. **Categorize** each orphan: has JSONL (Category A), HTML only (Category B), empty (Category C), or other (Category D).
+3. **Derive project** from JSONL `cwd` field or HTML file path references. Sessions that can't be matched go to `unknown-project/`.
+4. **Compare duplicates** when the target already exists: compares JSONL file sizes (larger = more complete, since JSONL is append-only). If the orphan is newer, it replaces the organized copy. If sizes match, the orphan is marked as already organized.
+5. **Move** the orphan into the project directory, regenerating HTML from JSONL if available.
+6. **Rebuild indexes** (unless `--no-reindex`): scans the archive and regenerates all project and master `index.html` pages.
+
+### Report
+
+After processing, a structured report shows:
+
+```
+=== RECONCILIATION REPORT ===
+
+  Processed: 243 session folders
+    Moved (with JSONL):      27
+    Moved (HTML only):        0
+    Moved (unknown):          1
+    Replaced (newer):         0
+    Already organized:      209
+    Skipped (empty):          6
+    Failed:                   0
+
+  Projects affected: 7
+  Elapsed: 4.5s
+  Reindex: completed
+```
+
+### Examples
+
+```bash
+# Preview what would happen
+uv run python scripts/reconcile_sessions.py --dry-run ~/CODE/my-claude-code-transcripts/
+
+# Detailed preview showing each session's target
+uv run python scripts/reconcile_sessions.py --dry-run --verbose ~/CODE/my-claude-code-transcripts/
+
+# Run for real (reconcile + rebuild indexes)
+uv run python scripts/reconcile_sessions.py ~/CODE/my-claude-code-transcripts/
+
+# Run without rebuilding indexes
+uv run python scripts/reconcile_sessions.py --no-reindex ~/CODE/my-claude-code-transcripts/
+
+# Non-interactive (skip confirmations)
+uv run python scripts/reconcile_sessions.py --yes ~/CODE/my-claude-code-transcripts/
 ```
 
 ## See also

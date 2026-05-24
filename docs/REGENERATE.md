@@ -114,6 +114,20 @@ After a fresh `all` regen over the same source, the two counts should match (all
 
 Adapt the `grep` pattern to whatever generator-side change you're checking — a class name, a script tag, a specific CSS variable, etc.
 
+## Rebuilding indexes only
+
+If you've manually rearranged session folders in the archive (e.g., moved sessions between projects or deleted stale folders), you can rebuild all index pages without re-rendering any session HTML:
+
+```bash
+uv run python scripts/reconcile_sessions.py --yes ~/my-claude-code-transcripts/
+```
+
+If there are no orphan UUID folders at the root level, the script skips reconciliation and just rebuilds the project and master indexes from the existing archive structure. This is faster than a full `all` regeneration since it doesn't re-read from `~/.claude/projects/` or re-render session HTML.
+
+To skip the index rebuild (e.g., if you only want to reconcile orphans), pass `--no-reindex`.
+
+See [`CLI.md#reconcile`](CLI.md#reconcile) for the full reference.
+
 ## See also
 
 - [`CLI.md`](CLI.md) — every flag for every subcommand

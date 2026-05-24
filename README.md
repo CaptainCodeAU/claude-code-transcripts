@@ -20,6 +20,7 @@ Features added in this fork beyond the upstream project:
 - **`<task-notification>` fix** preventing background task completions from rendering as user messages
 - **Batch archive source inclusion** via the `all` command with `--json/--no-json` support
 - **Companion plugin** for automatic session-end export via [claude-transcript-exporter](https://github.com/CaptainCodeAU/gz-claude-code-plugins)
+- **Reconciliation script** (`scripts/reconcile_sessions.py`) to organize orphan UUID session folders into project directories with smart duplicate detection, HTML regeneration, and index rebuilding
 
 ## Installation
 
@@ -36,12 +37,13 @@ uvx claude-code-transcripts --help
 
 This tool converts Claude Code session files into browseable multi-page HTML transcripts.
 
-There are four commands available:
+There are four commands available, plus a standalone reconciliation script:
 
 - `local` (default) - select from local Claude Code sessions stored in `~/.claude/projects`
 - `web` - select from web sessions via the Claude API
 - `json` - convert a specific JSON or JSONL session file
 - `all` - convert all local sessions to a browsable HTML archive
+- `scripts/reconcile_sessions.py` - organize orphan session folders into project directories
 
 The quickest way to view a recent local session:
 
@@ -221,6 +223,30 @@ claude-code-transcripts all -o ./my-archive
 # Include agent sessions
 claude-code-transcripts all --include-agents
 ```
+
+### Reconciling orphan sessions
+
+If your archive has UUID-named session folders sitting at the root level (e.g., from the older `claude-transcript-exporter` plugin or manual exports), the reconciliation script organizes them into their correct project directories:
+
+```bash
+# Preview what would happen (safe, changes nothing):
+uv run python scripts/reconcile_sessions.py --dry-run ~/CODE/my-claude-code-transcripts/
+
+# Preview with per-session detail:
+uv run python scripts/reconcile_sessions.py --dry-run --verbose ~/CODE/my-claude-code-transcripts/
+
+# Run for real (reconcile + rebuild indexes):
+uv run python scripts/reconcile_sessions.py ~/CODE/my-claude-code-transcripts/
+
+# Skip index rebuilding:
+uv run python scripts/reconcile_sessions.py --no-reindex ~/CODE/my-claude-code-transcripts/
+```
+
+The script categorizes each orphan folder, extracts the project from the JSONL `cwd` field (or HTML content as a fallback), and moves it into the matching project directory. It compares JSONL file sizes when duplicates are detected (larger = more complete, since JSONL is append-only) and can replace organized copies with newer orphans. Sessions that can't be matched to any project are moved to `unknown-project/`.
+
+After moving, all project and master `index.html` pages are rebuilt from the archive contents (unless `--no-reindex` is passed).
+
+See [`docs/CLI.md#reconcile`](docs/CLI.md#reconcile) for the full flag reference.
 
 ## Related projects
 
