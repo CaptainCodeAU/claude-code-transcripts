@@ -550,6 +550,69 @@ class TestCopyButtons:
         decoded = base64.b64decode(match.group(1)).decode("utf-8")
         assert decoded == "uv run pytest"
 
+    def test_index_item_has_copy_button(self):
+        """Index item (prompt) emits a copy button carrying the raw user text."""
+        import base64
+
+        from claude_code_transcripts import _macros
+
+        raw_text = "Build me a CLI tool"
+        rendered = "<p>Build me a CLI tool</p>"
+        result = _macros.index_item(
+            1, "page-001.html#msg-1", "2026-01-01T12:00:00", rendered, "", raw_text
+        )
+        expected_b64 = base64.b64encode(raw_text.encode("utf-8")).decode("ascii")
+        assert 'class="copy-btn"' in result
+        assert f'data-copy-src="{expected_b64}"' in result
+        assert 'aria-label="Copy prompt"' in result
+
+    def test_index_commit_has_copy_button(self):
+        """Index commit emits a copy button with hash+message payload."""
+        import base64
+
+        from claude_code_transcripts import _macros
+
+        result = _macros.index_commit(
+            "abc1234def", "Fix the thing", "2026-01-01T12:00:00", "user/repo"
+        )
+        expected_payload = "abc1234def Fix the thing"
+        expected_b64 = base64.b64encode(expected_payload.encode("utf-8")).decode(
+            "ascii"
+        )
+        assert 'class="copy-btn"' in result
+        assert f'data-copy-src="{expected_b64}"' in result
+        assert 'aria-label="Copy commit reference"' in result
+
+    def test_index_commit_no_github_has_copy_button(self):
+        """Index commit without GitHub link still has copy button."""
+        import base64
+
+        from claude_code_transcripts import _macros
+
+        result = _macros.index_commit(
+            "abc1234def", "Fix the thing", "2026-01-01T12:00:00", None
+        )
+        expected_payload = "abc1234def Fix the thing"
+        expected_b64 = base64.b64encode(expected_payload.encode("utf-8")).decode(
+            "ascii"
+        )
+        assert 'class="copy-btn"' in result
+        assert f'data-copy-src="{expected_b64}"' in result
+
+    def test_index_long_text_has_copy_button(self):
+        """Index long text emits a copy button carrying the raw text."""
+        import base64
+
+        from claude_code_transcripts import _macros
+
+        raw_text = "This is a long assistant response with lots of detail..."
+        rendered = "<p>This is a long assistant response with lots of detail...</p>"
+        result = _macros.index_long_text(rendered, raw_text)
+        expected_b64 = base64.b64encode(raw_text.encode("utf-8")).decode("ascii")
+        assert 'class="copy-btn"' in result
+        assert f'data-copy-src="{expected_b64}"' in result
+        assert 'aria-label="Copy text"' in result
+
 
 class TestRenderContentBlock:
     """Tests for render_content_block function."""
