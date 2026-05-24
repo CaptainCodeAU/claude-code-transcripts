@@ -1,15 +1,25 @@
 # claude-code-transcripts
 
-[![PyPI](https://img.shields.io/pypi/v/claude-code-transcripts.svg)](https://pypi.org/project/claude-code-transcripts/)
-[![Changelog](https://img.shields.io/github/v/release/simonw/claude-code-transcripts?include_prereleases&label=changelog)](https://github.com/simonw/claude-code-transcripts/releases)
-[![Tests](https://github.com/simonw/claude-code-transcripts/workflows/Test/badge.svg)](https://github.com/simonw/claude-code-transcripts/actions?query=workflow%3ATest)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/claude-code-transcripts/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/CaptainCodeAU/claude-code-transcripts/blob/master/LICENSE)
+
+> **Fork of [simonw/claude-code-transcripts](https://github.com/simonw/claude-code-transcripts)** by [Simon Willison](https://simonwillison.net/). Original project background: [A new way to extract detailed transcripts from Claude Code](https://simonwillison.net/2025/Dec/25/claude-code-transcripts/). This fork adds enhanced rendering, archival features, and UX improvements while staying compatible with upstream session formats.
 
 Convert Claude Code session files (JSON or JSONL) to clean, mobile-friendly HTML pages with pagination.
 
-[Example transcript](https://static.simonwillison.net/static/2025/claude-code-microjs/index.html) produced using this tool.
+[Example transcript](https://static.simonwillison.net/static/2025/claude-code-microjs/index.html) produced using the upstream tool.
 
-Read [A new way to extract detailed transcripts from Claude Code](https://simonwillison.net/2025/Dec/25/claude-code-transcripts/) for background on this project.
+## Fork enhancements
+
+Features added in this fork beyond the upstream project:
+
+- **Dark mode by default** with a floating light/dark toggle on every page
+- **Copy-to-clipboard buttons** on all blocks (code, tool inputs/outputs, text, diffs, commit cards, thinking, and full messages)
+- **Wider responsive layout** (1400px max-width with breakpoints at 1024px and 600px)
+- **Markdown rendering** in assistant and user messages (list preprocessing, GFM strikethrough/task lists, CSS for headings/tables/blockquotes/lists)
+- **`--json/--no-json` flag** across all subcommands (default: on) to include/suppress source file archival
+- **`<task-notification>` fix** preventing background task completions from rendering as user messages
+- **Batch archive source inclusion** via the `all` command with `--json/--no-json` support
+- **Companion plugin** for automatic session-end export via [claude-transcript-exporter](https://github.com/CaptainCodeAU/gz-claude-code-plugins)
 
 ## Installation
 
@@ -212,6 +222,10 @@ claude-code-transcripts all -o ./my-archive
 claude-code-transcripts all --include-agents
 ```
 
+## Related projects
+
+- [gz-claude-code-plugins](https://github.com/CaptainCodeAU/gz-claude-code-plugins) contains the **claude-transcript-exporter** plugin, which automatically runs this tool when a Claude Code session ends. Install it once and every session's transcript is exported to your archive directory without manual invocation.
+
 ## Development
 
 To contribute to this tool, first checkout the code. You can run the tests using `uv run`:
@@ -222,4 +236,12 @@ uv run pytest
 And run your local development copy of the tool like this:
 ```bash
 uv run claude-code-transcripts --help
+```
+
+### Syncing with upstream
+
+This fork tracks the upstream repo as a remote:
+```bash
+git remote add upstream https://github.com/simonw/claude-code-transcripts.git
+git fetch upstream
 ```
