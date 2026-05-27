@@ -242,64 +242,39 @@ Positional argument:
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `--dry-run` | flag | off | Show what would be done without making changes. |
+| `--dry-run` | flag | off | Show the move plan without making changes. Reindexing is also skipped. |
 | `--no-reindex` | flag | off | Skip rebuilding project and master `index.html` pages after reconciliation. By default, all indexes are rebuilt. |
-| `--cleanup` | flag | off | Delete verified duplicate and empty orphan folders after reconciliation. Prompts for confirmation (skippable with `--yes`). Respects `--dry-run`. |
-| `--yes` | flag | off | Skip interactive confirmations. |
-| `--verbose, -v` | flag | off | Show detailed error output on failures. In `--dry-run` mode, lists each session's target project with status tags (`[DUPLICATE]`, `[NEW]`, `[REPLACE]`, `[UNKNOWN]`). |
+| `--yes` | flag | off | Skip all interactive confirmations. |
+| `--verbose, -v` | flag | off | Show detailed error output on failures. |
+| `--cleanup` | flag | off | Legacy flag, no longer required. Duplicate/empty cleanup prompts now appear automatically. |
 | `--help` | flag | -- | Show command help and exit. |
 
 ### How it works
 
 1. **Scan** the archive root for UUID-named directories (orphans).
-2. **Categorize** each orphan: has JSONL (Category A), HTML only (Category B), empty (Category C), or other (Category D).
+2. **Categorize** each orphan: has JSONL, HTML only, empty, or unrecognized files.
 3. **Derive project** from JSONL `cwd` field or HTML file path references. Sessions that can't be matched go to `unknown-project/`.
-4. **Compare duplicates** when the target already exists: compares JSONL file sizes (larger = more complete, since JSONL is append-only). If the orphan is newer, it replaces the organized copy. If sizes match, the orphan is marked as already organized.
-5. **Move** the orphan into the project directory, regenerating HTML from JSONL if available.
-6. **Cleanup** (with `--cleanup`): delete verified duplicate folders (JSONL sizes match) and empty folders from the archive root.
-7. **Rebuild indexes** (unless `--no-reindex`): scans the archive and regenerates all project and master `index.html` pages.
+4. **Compare duplicates** when the target already exists: compares JSONL file sizes (larger = more complete, since JSONL is append-only). If the orphan is larger, it replaces the organized copy (old copy backed up to `_DELETE/`). If sizes match, the orphan is marked as already organized.
+5. **Show move plan** grouped by action: `[REPLACE]`, `[MOVE]`, `[SKIP - ALREADY ORGANIZED]`, `[SKIP - UNKNOWN PROJECT]`, `[EMPTY]`, `[UNRECOGNIZED]`. Each entry shows the target project, size delta (for replacements), and relative age.
+6. **Prompt per group**: each group has its own confirmation. Declining one skips it and continues to the next. Duplicate orphans, empty folders, and unrecognized folders are prompted for soft-delete to `_DELETE/`.
+7. **Rebuild indexes** (unless `--no-reindex` or `--dry-run`): scans the archive and regenerates all project and master `index.html` pages.
 
-### Report
-
-After processing, a structured report shows:
-
-```
-=== RECONCILIATION REPORT ===
-
-  Processed: 243 session folders
-    Moved (with JSONL):      27
-    Moved (HTML only):        0
-    Moved (unknown):          1
-    Replaced (newer):         0
-    Already organized:      209
-    Skipped (empty):          6
-    Failed:                   0
-
-  Projects affected: 7
-  Elapsed: 4.5s
-  Reindex: completed
-```
+Nothing is permanently deleted. Unwanted folders are moved to a `_DELETE/` directory in the archive root. If a name collision occurs in `_DELETE/`, a suffix (`-1`, `-2`, etc.) is appended.
 
 ### Examples
 
 ```bash
-# Preview what would happen
+# Preview what would happen (no changes made)
 uv run python scripts/reconcile_sessions.py --dry-run ~/CODE/my-claude-code-transcripts/
-
-# Detailed preview showing each session's target
-uv run python scripts/reconcile_sessions.py --dry-run --verbose ~/CODE/my-claude-code-transcripts/
 
 # Run for real (reconcile + rebuild indexes)
 uv run python scripts/reconcile_sessions.py ~/CODE/my-claude-code-transcripts/
 
+# Non-interactive (skip all confirmations)
+uv run python scripts/reconcile_sessions.py --yes ~/CODE/my-claude-code-transcripts/
+
 # Run without rebuilding indexes
 uv run python scripts/reconcile_sessions.py --no-reindex ~/CODE/my-claude-code-transcripts/
-
-# Reconcile and clean up verified duplicates + empties
-uv run python scripts/reconcile_sessions.py --cleanup ~/CODE/my-claude-code-transcripts/
-
-# Non-interactive (skip confirmations)
-uv run python scripts/reconcile_sessions.py --yes ~/CODE/my-claude-code-transcripts/
 ```
 
 ## See also

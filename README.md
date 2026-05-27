@@ -232,22 +232,21 @@ If your archive has UUID-named session folders sitting at the root level (e.g., 
 # Preview what would happen (safe, changes nothing):
 uv run python scripts/reconcile_sessions.py --dry-run ~/CODE/my-claude-code-transcripts/
 
-# Preview with per-session detail:
-uv run python scripts/reconcile_sessions.py --dry-run --verbose ~/CODE/my-claude-code-transcripts/
-
 # Run for real (reconcile + rebuild indexes):
 uv run python scripts/reconcile_sessions.py ~/CODE/my-claude-code-transcripts/
 
-# Also clean up verified duplicates and empty folders:
-uv run python scripts/reconcile_sessions.py --cleanup ~/CODE/my-claude-code-transcripts/
-
-# Skip index rebuilding:
-uv run python scripts/reconcile_sessions.py --no-reindex ~/CODE/my-claude-code-transcripts/
+# Non-interactive (skip all confirmations):
+uv run python scripts/reconcile_sessions.py --yes ~/CODE/my-claude-code-transcripts/
 ```
 
-The script categorizes each orphan folder, extracts the project from the JSONL `cwd` field (or HTML content as a fallback), and moves it into the matching project directory. It compares JSONL file sizes when duplicates are detected (larger = more complete, since JSONL is append-only) and can replace organized copies with newer orphans. Sessions that can't be matched to any project are moved to `unknown-project/`.
+The script shows a grouped move plan before prompting for each action:
 
-After moving, all project and master `index.html` pages are rebuilt from the archive contents (unless `--no-reindex` is passed).
+- **[REPLACE]** -- orphan has a larger JSONL than the existing copy (old copy backed up to `_DELETE/`)
+- **[MOVE]** -- new sessions for existing or new projects
+- **[SKIP - ALREADY ORGANIZED]** -- duplicate orphans (prompted to move to `_DELETE/`)
+- **[EMPTY]** / **[UNRECOGNIZED]** -- prompted to move to `_DELETE/`
+
+Each group has its own confirmation prompt. Declining one skips it and continues to the next. Nothing is permanently deleted; unwanted folders are soft-deleted to a `_DELETE/` directory in the archive root.
 
 See [`docs/CLI.md#reconcile`](docs/CLI.md#reconcile) for the full flag reference.
 
