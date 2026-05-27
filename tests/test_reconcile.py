@@ -422,14 +422,17 @@ class TestRelativeAge:
     def test_days_compound(self):
         assert _relative_age(time.time() - 259200) == "3 days ago"
         assert _relative_age(time.time() - 90000) == "1 day, 1 hour ago"
+        assert _relative_age(time.time() - 91800) == "1 day, 1 hour, 30 mins ago"
 
     def test_weeks_compound(self):
         assert _relative_age(time.time() - 1209600) == "2 weeks ago"
         assert _relative_age(time.time() - 777600) == "1 week, 2 days ago"
+        assert _relative_age(time.time() - 820800) == "1 week, 2 days, 12 hours ago"
 
     def test_months_compound(self):
         assert _relative_age(time.time() - 2592000) == "1 month ago"
         assert _relative_age(time.time() - 2851200) == "1 month, 3 days ago"
+        assert _relative_age(time.time() - 2894400) == "1 month, 3 days, 12 hours ago"
 
     def test_singular(self):
         assert _relative_age(time.time() - 3600) == "1 hour ago"

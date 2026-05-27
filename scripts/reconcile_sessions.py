@@ -274,29 +274,41 @@ def _relative_age(mtime: float) -> str:
     if delta < 604800:
         d = delta // 86400
         h = (delta % 86400) // 3600
+        m = (delta % 3600) // 60
         parts = [_plural(d, "day")]
         if h:
             parts.append(_plural(h, "hour"))
+        if m:
+            parts.append(_plural(m, "min"))
         return f"{', '.join(parts)} ago"
     if delta < 2592000:
         w = delta // 604800
         d = (delta % 604800) // 86400
+        h = (delta % 86400) // 3600
         parts = [_plural(w, "week")]
         if d:
             parts.append(_plural(d, "day"))
+        if h:
+            parts.append(_plural(h, "hour"))
         return f"{', '.join(parts)} ago"
     if delta < 31536000:
         mo = delta // 2592000
         d = (delta % 2592000) // 86400
+        h = (delta % 86400) // 3600
         parts = [_plural(mo, "month")]
         if d:
             parts.append(_plural(d, "day"))
+        if h:
+            parts.append(_plural(h, "hour"))
         return f"{', '.join(parts)} ago"
     y = delta // 31536000
     mo = (delta % 31536000) // 2592000
+    d = (delta % 2592000) // 86400
     parts = [_plural(y, "year")]
     if mo:
         parts.append(_plural(mo, "month"))
+    if d:
+        parts.append(_plural(d, "day"))
     return f"{', '.join(parts)} ago"
 
 
