@@ -90,9 +90,9 @@ class TestGetProjectDisplayName:
     def test_preserves_skip_dirs_word_in_project_name(self):
         assert (
             get_project_display_name(
-                "-Users-testuser-CODE-CaptainCodeAU-claude-code-transcripts"
+                "-Users-testuser-CODE-TestOwner-claude-code-transcripts"
             )
-            == "CaptainCodeAU-claude-code-transcripts"
+            == "TestOwner-claude-code-transcripts"
         )
 
     def test_still_strips_skip_dirs_as_directory(self):

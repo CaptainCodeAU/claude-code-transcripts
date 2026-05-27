@@ -152,7 +152,7 @@ Output structure:
 └── ...
 ```
 
-`<project-display-name>` is derived from the source folder name (e.g., `-Users-testuser-CODE-CaptainCodeAU-claude-code-transcripts` becomes `CaptainCodeAU-claude-transcripts`).
+`<project-display-name>` is derived from the source folder name (e.g., `-Users-alice-CODE-MyOrg-my-project` becomes `MyOrg-my-project`).
 
 Default output path:
 

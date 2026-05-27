@@ -144,7 +144,7 @@ Four docs to keep in sync when changing the reconcile script:
 ```
 ~/CODE/my-claude-code-transcripts/
   index.html                           Master index (lists all projects)
-  CaptainCodeAU-My-Project/
+  MyOrg-MyProject/
     index.html                         Project index (lists sessions)
     fdcff093-.../
       fdcff093-....jsonl               Session data (identical to source)

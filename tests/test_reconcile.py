@@ -95,7 +95,7 @@ class TestUUIDPattern:
         assert UUID_PATTERN.match("f1a2a7f0-5057-43c9-8e59-163d2c2ceb92")
 
     def test_rejects_non_uuid(self):
-        assert not UUID_PATTERN.match("CaptainCodeAU-My-Project")
+        assert not UUID_PATTERN.match("TestOwner-My-Project")
         assert not UUID_PATTERN.match("_legacy_something")
         assert not UUID_PATTERN.match("")
 
@@ -109,7 +109,7 @@ class TestFindUUIDFolders:
         uuid2 = tmp_path / "00759c27-1653-4a26-a6c3-a5d7db3c2161"
         uuid1.mkdir()
         uuid2.mkdir()
-        (tmp_path / "CaptainCodeAU-My-Project").mkdir()
+        (tmp_path / "TestOwner-My-Project").mkdir()
 
         result = find_uuid_folders(tmp_path)
         assert len(result) == 2
@@ -139,7 +139,7 @@ class TestFindUUIDFolders:
         assert result == []
 
     def test_ignores_project_folders(self, tmp_path):
-        (tmp_path / "CaptainCodeAU-My-Project").mkdir()
+        (tmp_path / "TestOwner-My-Project").mkdir()
         (tmp_path / "_legacy_something").mkdir()
         (tmp_path / ".hidden").mkdir()
         result = find_uuid_folders(tmp_path)
@@ -153,11 +153,10 @@ class TestExtractCwdFromJsonl:
     def test_normal_cwd(self, tmp_path):
         jsonl = tmp_path / "session.jsonl"
         jsonl.write_text(
-            '{"type":"user","cwd":"/Users/testuser/CODE/CaptainCodeAU/My_Project","sessionId":"abc","message":{}}\n'
+            '{"type":"user","cwd":"/Users/testuser/CODE/TestOwner/My_Project","sessionId":"abc","message":{}}\n'
         )
         assert (
-            extract_cwd_from_jsonl(jsonl)
-            == "/Users/testuser/CODE/CaptainCodeAU/My_Project"
+            extract_cwd_from_jsonl(jsonl) == "/Users/testuser/CODE/TestOwner/My_Project"
         )
 
     def test_cwd_not_on_first_line(self, tmp_path):
@@ -337,8 +336,8 @@ class TestFixProjectMtime:
 class TestCwdToProjectName:
     def test_standard_path(self):
         assert (
-            cwd_to_project_name("/Users/testuser/CODE/CaptainCodeAU/My_Project")
-            == "CaptainCodeAU-My-Project"
+            cwd_to_project_name("/Users/testuser/CODE/TestOwner/My_Project")
+            == "TestOwner-My-Project"
         )
 
     def test_simple_project(self):
@@ -435,37 +434,37 @@ class TestCategorizeAll:
 
 class TestFindMatchingProject:
     def test_exact_match(self):
-        projects = ["CaptainCodeAU-My-Project", "CaptainCodeAU-other-project"]
+        projects = ["TestOwner-My-Project", "TestOwner-other-project"]
         assert (
-            find_matching_project("CaptainCodeAU-My-Project", projects)
-            == "CaptainCodeAU-My-Project"
+            find_matching_project("TestOwner-My-Project", projects)
+            == "TestOwner-My-Project"
         )
 
     def test_case_insensitive(self):
-        projects = ["CaptainCodeAU-My-Project"]
+        projects = ["TestOwner-My-Project"]
         assert (
-            find_matching_project("captaincodeau-my-project", projects)
-            == "CaptainCodeAU-My-Project"
+            find_matching_project("testowner-my-project", projects)
+            == "TestOwner-My-Project"
         )
 
     def test_no_match(self):
-        projects = ["CaptainCodeAU-My-Project"]
+        projects = ["TestOwner-My-Project"]
         assert find_matching_project("totally-different", projects) is None
 
 
 class TestResolveTargetProject:
     def test_existing_project(self):
-        existing = ["CaptainCodeAU-My-Project", "CaptainCodeAU-other-project"]
+        existing = ["TestOwner-My-Project", "TestOwner-other-project"]
         name, is_new = resolve_target_project(
-            "/Users/testuser/CODE/CaptainCodeAU/My_Project", existing
+            "/Users/testuser/CODE/TestOwner/My_Project", existing
         )
-        assert name == "CaptainCodeAU-My-Project"
+        assert name == "TestOwner-My-Project"
         assert is_new is False
 
     def test_new_project(self):
-        existing = ["CaptainCodeAU-other-project"]
+        existing = ["TestOwner-other-project"]
         name, is_new = resolve_target_project(
-            "/Users/testuser/CODE/CaptainCodeAU/brand_new_thing", existing
+            "/Users/testuser/CODE/TestOwner/brand_new_thing", existing
         )
         assert is_new is True
         assert "brand" in name and "new" in name and "thing" in name
@@ -478,11 +477,11 @@ class TestExtractProjectFromHtml:
     def test_with_file_paths(self, tmp_path):
         html = tmp_path / "index.html"
         html.write_text(
-            '<div class="tool-use">Read /Users/testuser/CODE/CaptainCodeAU/My_Project/main.py</div>'
+            '<div class="tool-use">Read /Users/testuser/CODE/TestOwner/My_Project/main.py</div>'
         )
         result = extract_project_from_html(html)
         assert result is not None
-        assert "Tax" in result
+        assert "My-Project" in result
 
     def test_no_clues(self, tmp_path):
         html = tmp_path / "index.html"
@@ -498,9 +497,7 @@ class TestExtractProjectFromHtml:
 
     def test_strips_file_extension(self, tmp_path):
         html = tmp_path / "index.html"
-        html.write_text(
-            "<div>Read /Users/testuser/CODE/CaptainCodeAU/proj/file.py</div>"
-        )
+        html.write_text("<div>Read /Users/testuser/CODE/TestOwner/proj/file.py</div>")
         result = extract_project_from_html(html)
         assert result is not None
         assert "file" not in result.lower()
@@ -641,9 +638,7 @@ class TestCompareSessionCopies:
         assert winner == "orphan"
 
 
-def _make_uuid_folder(
-    tmp_path, uuid, cwd="/Users/testuser/CODE/CaptainCodeAU/My_Project"
-):
+def _make_uuid_folder(tmp_path, uuid, cwd="/Users/testuser/CODE/TestOwner/My_Project"):
     folder = tmp_path / uuid
     folder.mkdir()
     jsonl = folder / f"{uuid}.jsonl"
@@ -656,12 +651,12 @@ class TestProcessCategoryA:
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         folder = _make_uuid_folder(tmp_path, uuid)
         cat = categorize_folder(folder)
-        existing = ["CaptainCodeAU-My-Project"]
+        existing = ["TestOwner-My-Project"]
 
         result = process_category_a(cat, tmp_path, existing, dry_run=True)
         assert result.success is True
         assert folder.exists()
-        assert result.target_project == "CaptainCodeAU-My-Project"
+        assert result.target_project == "TestOwner-My-Project"
 
     @patch("reconcile_sessions.subprocess")
     def test_moves_folder(self, mock_subprocess, tmp_path):
@@ -671,13 +666,13 @@ class TestProcessCategoryA:
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         folder = _make_uuid_folder(tmp_path, uuid)
         cat = categorize_folder(folder)
-        existing = ["CaptainCodeAU-My-Project"]
-        (tmp_path / "CaptainCodeAU-My-Project").mkdir()
+        existing = ["TestOwner-My-Project"]
+        (tmp_path / "TestOwner-My-Project").mkdir()
 
         result = process_category_a(cat, tmp_path, existing, dry_run=False)
         assert result.success is True
         assert not folder.exists()
-        assert (tmp_path / "CaptainCodeAU-My-Project" / uuid).exists()
+        assert (tmp_path / "TestOwner-My-Project" / uuid).exists()
 
     @patch("reconcile_sessions.subprocess")
     def test_creates_new_project(self, mock_subprocess, tmp_path):
@@ -686,7 +681,7 @@ class TestProcessCategoryA:
         )()
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         folder = _make_uuid_folder(
-            tmp_path, uuid, cwd="/Users/testuser/CODE/CaptainCodeAU/brand_new"
+            tmp_path, uuid, cwd="/Users/testuser/CODE/TestOwner/brand_new"
         )
         cat = categorize_folder(folder)
         existing = []
@@ -699,12 +694,12 @@ class TestProcessCategoryA:
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         folder = _make_uuid_folder(tmp_path, uuid)
         cat = categorize_folder(folder)
-        proj_dir = tmp_path / "CaptainCodeAU-My-Project"
+        proj_dir = tmp_path / "TestOwner-My-Project"
         proj_dir.mkdir()
         organized = proj_dir / uuid
         organized.mkdir()
         (organized / f"{uuid}.jsonl").write_text((folder / f"{uuid}.jsonl").read_text())
-        existing = ["CaptainCodeAU-My-Project"]
+        existing = ["TestOwner-My-Project"]
 
         result = process_category_a(cat, tmp_path, existing, dry_run=False)
         assert result.success is True
@@ -718,19 +713,19 @@ class TestProcessCategoryA:
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         folder = _make_uuid_folder(tmp_path, uuid)
         orphan_content = (
-            '{"type":"user","cwd":"/Users/testuser/CODE/CaptainCodeAU/My_Project","message":{}}\n'
+            '{"type":"user","cwd":"/Users/testuser/CODE/TestOwner/My_Project","message":{}}\n'
             * 10
         )
         (folder / f"{uuid}.jsonl").write_text(orphan_content)
         cat = categorize_folder(folder)
-        proj_dir = tmp_path / "CaptainCodeAU-My-Project"
+        proj_dir = tmp_path / "TestOwner-My-Project"
         proj_dir.mkdir()
         organized = proj_dir / uuid
         organized.mkdir()
         (organized / f"{uuid}.jsonl").write_text(
-            '{"type":"user","cwd":"/Users/testuser/CODE/CaptainCodeAU/My_Project","message":{}}\n'
+            '{"type":"user","cwd":"/Users/testuser/CODE/TestOwner/My_Project","message":{}}\n'
         )
-        existing = ["CaptainCodeAU-My-Project"]
+        existing = ["TestOwner-My-Project"]
 
         result = process_category_a(cat, tmp_path, existing, dry_run=False)
         assert result.success is True
@@ -742,19 +737,19 @@ class TestProcessCategoryA:
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         folder = _make_uuid_folder(tmp_path, uuid)
         orphan_content = (
-            '{"type":"user","cwd":"/Users/testuser/CODE/CaptainCodeAU/My_Project","message":{}}\n'
+            '{"type":"user","cwd":"/Users/testuser/CODE/TestOwner/My_Project","message":{}}\n'
             * 10
         )
         (folder / f"{uuid}.jsonl").write_text(orphan_content)
         cat = categorize_folder(folder)
-        proj_dir = tmp_path / "CaptainCodeAU-My-Project"
+        proj_dir = tmp_path / "TestOwner-My-Project"
         proj_dir.mkdir()
         organized = proj_dir / uuid
         organized.mkdir()
         (organized / f"{uuid}.jsonl").write_text(
-            '{"type":"user","cwd":"/Users/testuser/CODE/CaptainCodeAU/My_Project","message":{}}\n'
+            '{"type":"user","cwd":"/Users/testuser/CODE/TestOwner/My_Project","message":{}}\n'
         )
-        existing = ["CaptainCodeAU-My-Project"]
+        existing = ["TestOwner-My-Project"]
 
         result = process_category_a(cat, tmp_path, existing, dry_run=True)
         assert result.replaced_organized is True
@@ -769,8 +764,8 @@ class TestProcessCategoryA:
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         folder = _make_uuid_folder(tmp_path, uuid)
         cat = categorize_folder(folder)
-        (tmp_path / "CaptainCodeAU-My-Project").mkdir()
-        existing = ["CaptainCodeAU-My-Project"]
+        (tmp_path / "TestOwner-My-Project").mkdir()
+        existing = ["TestOwner-My-Project"]
 
         result = process_category_a(cat, tmp_path, existing, dry_run=False)
         assert result.success is True
@@ -799,12 +794,12 @@ class TestProcessCategoryB:
         folder.mkdir()
         html = folder / "index.html"
         html.write_text(
-            "<div>Read /Users/testuser/CODE/CaptainCodeAU/My_Project/file.py</div>"
+            "<div>Read /Users/testuser/CODE/TestOwner/My_Project/file.py</div>"
         )
         cat = categorize_folder(folder)
-        proj_dir = tmp_path / "CaptainCodeAU-My-Project"
+        proj_dir = tmp_path / "TestOwner-My-Project"
         proj_dir.mkdir()
-        existing = ["CaptainCodeAU-My-Project"]
+        existing = ["TestOwner-My-Project"]
 
         result = process_category_b(cat, tmp_path, existing, dry_run=False)
         assert result.success is True
@@ -816,10 +811,10 @@ class TestProcessCategoryB:
         folder = tmp_path / uuid
         folder.mkdir()
         (folder / "index.html").write_text(
-            "<div>Read /Users/testuser/CODE/CaptainCodeAU/My_Project/file.py</div>"
+            "<div>Read /Users/testuser/CODE/TestOwner/My_Project/file.py</div>"
         )
         cat = categorize_folder(folder)
-        existing = ["CaptainCodeAU-My-Project"]
+        existing = ["TestOwner-My-Project"]
 
         result = process_category_b(cat, tmp_path, existing, dry_run=True)
         assert result.success is True
@@ -844,26 +839,26 @@ class TestProcessCategoryB:
 
 class TestListExistingProjects:
     def test_finds_project_dirs(self, tmp_path):
-        (tmp_path / "CaptainCodeAU-My-Project").mkdir()
-        (tmp_path / "CaptainCodeAU-other-project").mkdir()
+        (tmp_path / "TestOwner-My-Project").mkdir()
+        (tmp_path / "TestOwner-other-project").mkdir()
         (tmp_path / "aaaaaaaa-0000-0000-0000-000000000001").mkdir()
         (tmp_path / ".hidden").mkdir()
 
         result = list_existing_projects(tmp_path)
-        assert "CaptainCodeAU-My-Project" in result
-        assert "CaptainCodeAU-other-project" in result
+        assert "TestOwner-My-Project" in result
+        assert "TestOwner-other-project" in result
         assert "aaaaaaaa-0000-0000-0000-000000000001" not in result
         assert ".hidden" not in result
 
     def test_excludes_legacy_dirs(self, tmp_path):
         (tmp_path / "_legacy_My_Project").mkdir()
         (tmp_path / "_my_backup").mkdir()
-        (tmp_path / "CaptainCodeAU-My-Project").mkdir()
+        (tmp_path / "TestOwner-My-Project").mkdir()
 
         result = list_existing_projects(tmp_path)
         assert "_legacy_My_Project" not in result
         assert "_my_backup" not in result
-        assert "CaptainCodeAU-My-Project" in result
+        assert "TestOwner-My-Project" in result
 
 
 class TestScanArchiveForProjects:
@@ -952,18 +947,18 @@ class TestComputeMovePlan:
         cat = categorize_folder(folder)
         categories = {c: [] for c in Category}
         categories[Category.A_JSONL] = [cat]
-        existing = ["CaptainCodeAU-My-Project"]
+        existing = ["TestOwner-My-Project"]
 
         plan = compute_move_plan(categories, tmp_path, existing)
         assert len(plan) == 1
-        assert plan[0].target_project == "CaptainCodeAU-My-Project"
+        assert plan[0].target_project == "TestOwner-My-Project"
         assert plan[0].duplicate_status == ""
         assert plan[0].is_new_project is False
 
     def test_new_project_detected(self, tmp_path):
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         _make_uuid_folder(
-            tmp_path, uuid, cwd="/Users/testuser/CODE/CaptainCodeAU/brand_new"
+            tmp_path, uuid, cwd="/Users/testuser/CODE/TestOwner/brand_new"
         )
         cat = categorize_folder(tmp_path / uuid)
         categories = {c: [] for c in Category}
@@ -975,7 +970,7 @@ class TestComputeMovePlan:
     def test_duplicate_skip(self, tmp_path):
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         folder = _make_uuid_folder(tmp_path, uuid)
-        proj = tmp_path / "CaptainCodeAU-My-Project"
+        proj = tmp_path / "TestOwner-My-Project"
         proj.mkdir()
         organized = proj / uuid
         organized.mkdir()
@@ -984,28 +979,28 @@ class TestComputeMovePlan:
         categories = {c: [] for c in Category}
         categories[Category.A_JSONL] = [cat]
 
-        plan = compute_move_plan(categories, tmp_path, ["CaptainCodeAU-My-Project"])
+        plan = compute_move_plan(categories, tmp_path, ["TestOwner-My-Project"])
         assert plan[0].duplicate_status == "skip"
 
     def test_duplicate_replace(self, tmp_path):
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         folder = _make_uuid_folder(tmp_path, uuid)
         (folder / f"{uuid}.jsonl").write_text(
-            '{"type":"user","cwd":"/Users/testuser/CODE/CaptainCodeAU/My_Project","message":{}}\n'
+            '{"type":"user","cwd":"/Users/testuser/CODE/TestOwner/My_Project","message":{}}\n'
             * 10
         )
-        proj = tmp_path / "CaptainCodeAU-My-Project"
+        proj = tmp_path / "TestOwner-My-Project"
         proj.mkdir()
         organized = proj / uuid
         organized.mkdir()
         (organized / f"{uuid}.jsonl").write_text(
-            '{"type":"user","cwd":"/Users/testuser/CODE/CaptainCodeAU/My_Project","message":{}}\n'
+            '{"type":"user","cwd":"/Users/testuser/CODE/TestOwner/My_Project","message":{}}\n'
         )
         cat = categorize_folder(folder)
         categories = {c: [] for c in Category}
         categories[Category.A_JSONL] = [cat]
 
-        plan = compute_move_plan(categories, tmp_path, ["CaptainCodeAU-My-Project"])
+        plan = compute_move_plan(categories, tmp_path, ["TestOwner-My-Project"])
         assert plan[0].duplicate_status == "replace"
         assert plan[0].duplicate_reason != ""
 
@@ -1014,15 +1009,15 @@ class TestComputeMovePlan:
         folder = tmp_path / uuid
         folder.mkdir()
         (folder / "index.html").write_text(
-            "<div>Read /Users/testuser/CODE/CaptainCodeAU/My_Project/file.py</div>"
+            "<div>Read /Users/testuser/CODE/TestOwner/My_Project/file.py</div>"
         )
         cat = categorize_folder(folder)
         categories = {c: [] for c in Category}
         categories[Category.B_HTML_ONLY] = [cat]
 
-        plan = compute_move_plan(categories, tmp_path, ["CaptainCodeAU-My-Project"])
+        plan = compute_move_plan(categories, tmp_path, ["TestOwner-My-Project"])
         assert len(plan) == 1
-        assert plan[0].target_project == "CaptainCodeAU-My-Project"
+        assert plan[0].target_project == "TestOwner-My-Project"
         assert plan[0].category_label == "HTML"
 
     def test_unknown_cwd(self, tmp_path):
@@ -1044,7 +1039,7 @@ class TestComputeMovePlan:
         for i in range(2):
             uuid = f"aaaaaaaa-0000-0000-0000-00000000000{i+1}"
             _make_uuid_folder(
-                tmp_path, uuid, cwd="/Users/testuser/CODE/CaptainCodeAU/brand_new"
+                tmp_path, uuid, cwd="/Users/testuser/CODE/TestOwner/brand_new"
             )
         cats = {c: [] for c in Category}
         for i in range(2):
@@ -1432,7 +1427,7 @@ class TestMainDryRun:
     def test_dry_run_no_changes(self, mock_subprocess, tmp_path, capsys):
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         folder = _make_uuid_folder(tmp_path, uuid)
-        (tmp_path / "CaptainCodeAU-My-Project").mkdir()
+        (tmp_path / "TestOwner-My-Project").mkdir()
 
         main(["--dry-run", "--yes", str(tmp_path)])
 
@@ -1443,7 +1438,7 @@ class TestMainDryRun:
     def test_duplicates_reported_as_organized(self, tmp_path, capsys):
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         folder = _make_uuid_folder(tmp_path, uuid)
-        proj = tmp_path / "CaptainCodeAU-My-Project"
+        proj = tmp_path / "TestOwner-My-Project"
         proj.mkdir()
         organized = proj / uuid
         organized.mkdir()
@@ -1457,18 +1452,18 @@ class TestMainDryRun:
     def test_verbose_dry_run_shows_targets(self, tmp_path, capsys):
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         _make_uuid_folder(tmp_path, uuid)
-        (tmp_path / "CaptainCodeAU-My-Project").mkdir()
+        (tmp_path / "TestOwner-My-Project").mkdir()
 
         main(["--dry-run", "--yes", "--verbose", str(tmp_path)])
 
         captured = capsys.readouterr()
-        assert "CaptainCodeAU-My-Project" in captured.out
+        assert "TestOwner-My-Project" in captured.out
 
     def test_non_tty_output_no_carriage_return(self, tmp_path, capsys, monkeypatch):
         monkeypatch.setattr("sys.stdout.isatty", lambda: False)
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         _make_uuid_folder(tmp_path, uuid)
-        (tmp_path / "CaptainCodeAU-My-Project").mkdir()
+        (tmp_path / "TestOwner-My-Project").mkdir()
 
         main(["--dry-run", "--yes", str(tmp_path)])
 
@@ -1492,7 +1487,7 @@ class TestMainDryRun:
         for i in range(2):
             uuid = f"aaaaaaaa-0000-0000-0000-00000000000{i+1}"
             _make_uuid_folder(
-                tmp_path, uuid, cwd="/Users/testuser/CODE/CaptainCodeAU/brand_new"
+                tmp_path, uuid, cwd="/Users/testuser/CODE/TestOwner/brand_new"
             )
 
         main(["--dry-run", "--yes", str(tmp_path)])
@@ -1591,7 +1586,7 @@ class TestMainDryRun:
     def test_cleanup_moves_to_delete_folder(self, tmp_path, capsys):
         uuid_dup = "aaaaaaaa-0000-0000-0000-000000000001"
         orphan = _make_uuid_folder(tmp_path, uuid_dup)
-        proj = tmp_path / "CaptainCodeAU-My-Project"
+        proj = tmp_path / "TestOwner-My-Project"
         proj.mkdir()
         organized = proj / uuid_dup
         organized.mkdir()
@@ -1616,7 +1611,7 @@ class TestMainDryRun:
     def test_cleanup_dry_run_preserves_folders(self, tmp_path, capsys):
         uuid_dup = "aaaaaaaa-0000-0000-0000-000000000001"
         orphan = _make_uuid_folder(tmp_path, uuid_dup)
-        proj = tmp_path / "CaptainCodeAU-My-Project"
+        proj = tmp_path / "TestOwner-My-Project"
         proj.mkdir()
         organized = proj / uuid_dup
         organized.mkdir()
@@ -1633,7 +1628,7 @@ class TestMainDryRun:
     def test_cleanup_report_shows_counts(self, tmp_path, capsys):
         uuid_dup = "aaaaaaaa-0000-0000-0000-000000000001"
         orphan = _make_uuid_folder(tmp_path, uuid_dup)
-        proj = tmp_path / "CaptainCodeAU-My-Project"
+        proj = tmp_path / "TestOwner-My-Project"
         proj.mkdir()
         organized = proj / uuid_dup
         organized.mkdir()
@@ -1649,18 +1644,18 @@ class TestMainDryRun:
     def test_move_plan_shown_before_processing(self, tmp_path, capsys):
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         _make_uuid_folder(tmp_path, uuid)
-        (tmp_path / "CaptainCodeAU-My-Project").mkdir()
+        (tmp_path / "TestOwner-My-Project").mkdir()
 
         main(["--dry-run", "--yes", str(tmp_path)])
 
         captured = capsys.readouterr()
         assert "Move plan" in captured.out
-        assert "CaptainCodeAU-My-Project" in captured.out
+        assert "TestOwner-My-Project" in captured.out
 
     def test_move_plan_shows_new_project_tag(self, tmp_path, capsys):
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         _make_uuid_folder(
-            tmp_path, uuid, cwd="/Users/testuser/CODE/CaptainCodeAU/brand_new"
+            tmp_path, uuid, cwd="/Users/testuser/CODE/TestOwner/brand_new"
         )
 
         main(["--dry-run", "--yes", str(tmp_path)])
@@ -1671,7 +1666,7 @@ class TestMainDryRun:
     def test_move_plan_shows_duplicate_skip(self, tmp_path, capsys):
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         folder = _make_uuid_folder(tmp_path, uuid)
-        proj = tmp_path / "CaptainCodeAU-My-Project"
+        proj = tmp_path / "TestOwner-My-Project"
         proj.mkdir()
         organized = proj / uuid
         organized.mkdir()
@@ -1687,15 +1682,15 @@ class TestMainDryRun:
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
         folder = _make_uuid_folder(tmp_path, uuid)
         (folder / f"{uuid}.jsonl").write_text(
-            '{"type":"user","cwd":"/Users/testuser/CODE/CaptainCodeAU/My_Project","message":{}}\n'
+            '{"type":"user","cwd":"/Users/testuser/CODE/TestOwner/My_Project","message":{}}\n'
             * 10
         )
-        proj = tmp_path / "CaptainCodeAU-My-Project"
+        proj = tmp_path / "TestOwner-My-Project"
         proj.mkdir()
         organized = proj / uuid
         organized.mkdir()
         (organized / f"{uuid}.jsonl").write_text(
-            '{"type":"user","cwd":"/Users/testuser/CODE/CaptainCodeAU/My_Project","message":{}}\n'
+            '{"type":"user","cwd":"/Users/testuser/CODE/TestOwner/My_Project","message":{}}\n'
         )
 
         main(["--dry-run", "--yes", str(tmp_path)])
