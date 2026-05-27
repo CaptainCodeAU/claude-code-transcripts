@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum, auto
 from pathlib import Path
 
@@ -79,6 +80,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Show detailed error output on failures.",
     )
     return parser.parse_args(argv)
+
+
+def extract_last_timestamp(jsonl_path: Path) -> float:
+    last_ts = 0.0
+    try:
+        with open(jsonl_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    ts = obj.get("timestamp", "")
+                    if ts:
+                        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        last_ts = dt.timestamp()
+                except (json.JSONDecodeError, ValueError):
+                    continue
+    except (FileNotFoundError, OSError):
+        pass
+    return last_ts
 
 
 def extract_cwd_from_jsonl(jsonl_path: Path) -> str | None:
@@ -829,10 +851,12 @@ def compute_move_plan(
 
         source_mtime = 0.0
         if folder.jsonl_path and folder.jsonl_path.exists():
-            try:
-                source_mtime = folder.jsonl_path.stat().st_mtime
-            except OSError:
-                pass
+            source_mtime = extract_last_timestamp(folder.jsonl_path)
+            if not source_mtime:
+                try:
+                    source_mtime = folder.jsonl_path.stat().st_mtime
+                except OSError:
+                    pass
 
         summary = ""
         if folder.jsonl_path and folder.jsonl_path.exists():
@@ -1141,10 +1165,14 @@ def format_delete_plan(
             age_str = ""
             jsonl = _find_jsonl_in_dir(p) if p.exists() else None
             if jsonl and jsonl.exists():
-                try:
-                    age_str = f"  ({_relative_age(jsonl.stat().st_mtime)})"
-                except OSError:
-                    pass
+                ts = extract_last_timestamp(jsonl)
+                if not ts:
+                    try:
+                        ts = jsonl.stat().st_mtime
+                    except OSError:
+                        ts = 0.0
+                if ts:
+                    age_str = f"  {DIM}({_relative_age(ts)}){RESET}"
             lines.append(f"  {DIM}{p.name}{RESET}{reason_str}{age_str}")
         if len(sorted_dups) > 15:
             lines.append(

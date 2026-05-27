@@ -21,6 +21,7 @@ from reconcile_sessions import (
     _human_size,
     _relative_age,
     categorize_all,
+    extract_last_timestamp,
     categorize_folder,
     compare_session_copies,
     compute_move_plan,
@@ -208,6 +209,28 @@ class TestExtractCwdFromJsonl:
             '{"type":"user","cwd":"/Users/testuser/CODE/real","message":{}}\n'
         )
         assert extract_cwd_from_jsonl(jsonl) == "/Users/testuser/CODE/real"
+
+
+class TestExtractLastTimestamp:
+    def test_extracts_last_timestamp(self, tmp_path):
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            '{"type":"user","timestamp":"2026-04-02T05:36:11.200Z","message":{}}\n'
+            '{"type":"assistant","timestamp":"2026-04-02T06:00:00.000Z","message":{}}\n'
+        )
+        ts = extract_last_timestamp(jsonl)
+        from datetime import datetime, timezone
+
+        expected = datetime(2026, 4, 2, 6, 0, 0, tzinfo=timezone.utc).timestamp()
+        assert abs(ts - expected) < 1
+
+    def test_no_timestamp_returns_zero(self, tmp_path):
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text('{"role":"user","message":{}}\n')
+        assert extract_last_timestamp(jsonl) == 0.0
+
+    def test_missing_file_returns_zero(self, tmp_path):
+        assert extract_last_timestamp(tmp_path / "missing.jsonl") == 0.0
 
 
 class TestCwdToProjectName:
