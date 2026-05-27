@@ -1492,26 +1492,22 @@ def main(argv: list[str] | None = None) -> None:
                 return f"{DIM}no change{RESET}"
 
             master = [c for c in changes if "master" in c.name]
-            projects_changed = [
-                c for c in changes if "master" not in c.name and c.changed
-            ]
+            projects_all = [c for c in changes if "master" not in c.name]
+            projects_changed = [c for c in projects_all if c.changed]
+            projects_unchanged = len(projects_all) - len(projects_changed)
 
             if projects_changed or (master and master[0].changed):
-                print(f"{GREEN}Indexes rebuilt.{RESET}")
-                print()
-                if projects_changed:
-                    print(
-                        f"  {BOLD}Project indexes updated ({CYAN}{len(projects_changed)}{RESET}{BOLD}):{RESET}"
-                    )
-                    for c in projects_changed:
-                        print(f"    {DIM}{c.name}/index.html{RESET}  ({_delta_str(c)})")
-                    print()
+                print(
+                    f"  {BOLD}Projects:{RESET}  {GREEN}{len(projects_changed)}{RESET} of {CYAN}{len(projects_all)}{RESET} updated"
+                )
+                for c in projects_changed:
+                    print(f"    {DIM}{c.name}/index.html{RESET}  ({_delta_str(c)})")
                 if master:
                     print(
-                        f"  {BOLD}Master index:{RESET}  {DIM}index.html{RESET}  ({_delta_str(master[0])})"
+                        f"  {BOLD}Master:{RESET}    {DIM}index.html{RESET}  ({_delta_str(master[0])})"
                     )
             else:
-                print(f"{GREEN}Indexes rebuilt. No changes.{RESET}")
+                print(f"  No changes.")
         except Exception as e:
             print(f"{RED}Reindex failed: {e}{RESET}", file=sys.stderr)
     elif args.dry_run and not args.no_reindex:
