@@ -1447,22 +1447,35 @@ def main(argv: list[str] | None = None) -> None:
         try:
             changes = reindex_archive(archive_path)
             report.reindexed = True
-            updated = [c for c in changes if c.changed]
-            if updated:
-                print(
-                    f"{GREEN}Indexes rebuilt.{RESET} {CYAN}{len(updated)}{RESET} updated:"
-                )
-                for c in updated:
-                    delta = c.delta
-                    if delta > 0:
-                        delta_str = f"{GREEN}+{_human_size(delta)}{RESET}"
-                    elif delta < 0:
-                        delta_str = f"{YELLOW}-{_human_size(abs(delta))}{RESET}"
-                    else:
-                        delta_str = "no change"
-                    if c.old_size == 0:
-                        delta_str = f"{GREEN}new ({_human_size(c.new_size)}){RESET}"
-                    print(f"  {DIM}{c.name}{RESET}  ({delta_str})")
+
+            def _delta_str(c: IndexChange) -> str:
+                if c.old_size == 0:
+                    return f"{GREEN}new ({_human_size(c.new_size)}){RESET}"
+                if c.delta > 0:
+                    return f"{GREEN}+{_human_size(c.delta)}{RESET}"
+                if c.delta < 0:
+                    return f"{YELLOW}-{_human_size(abs(c.delta))}{RESET}"
+                return f"{DIM}no change{RESET}"
+
+            master = [c for c in changes if "master" in c.name]
+            projects_changed = [
+                c for c in changes if "master" not in c.name and c.changed
+            ]
+
+            if projects_changed or (master and master[0].changed):
+                print(f"{GREEN}Indexes rebuilt.{RESET}")
+                print()
+                if projects_changed:
+                    print(
+                        f"  {BOLD}Project indexes updated ({CYAN}{len(projects_changed)}{RESET}{BOLD}):{RESET}"
+                    )
+                    for c in projects_changed:
+                        print(f"    {DIM}{c.name}/index.html{RESET}  ({_delta_str(c)})")
+                    print()
+                if master:
+                    print(
+                        f"  {BOLD}Master index:{RESET}  {DIM}index.html{RESET}  ({_delta_str(master[0])})"
+                    )
             else:
                 print(f"{GREEN}Indexes rebuilt. No changes.{RESET}")
         except Exception as e:
