@@ -20,7 +20,7 @@ Features added in this fork beyond the upstream project:
 - **`<task-notification>` fix** preventing background task completions from rendering as user messages
 - **Batch archive source inclusion** via the `all` command with `--json/--no-json` support
 - **Companion plugin** for automatic session-end export via [claude-transcript-exporter](https://github.com/CaptainCodeAU/gz-claude-code-plugins)
-- **Reconciliation script** (`scripts/reconcile_sessions.py`) to organize orphan UUID session folders into project directories with smart duplicate detection, HTML regeneration, and index rebuilding
+- **Reconciliation script** (`scripts/reconcile_sessions.py`) to organize orphan UUID session folders into project directories with grouped move plan, per-group confirmations, soft-delete to `_DELETE/`, and smart duplicate detection
 
 ## Installation
 
@@ -246,9 +246,9 @@ The script shows a grouped move plan before prompting for each action:
 - **[SKIP - ALREADY ORGANIZED]** -- duplicate orphans (prompted to move to `_DELETE/`)
 - **[EMPTY]** / **[UNRECOGNIZED]** -- prompted to move to `_DELETE/`
 
-Each group has its own confirmation prompt. Declining one skips it and continues to the next. Nothing is permanently deleted; unwanted folders are soft-deleted to a `_DELETE/` directory in the archive root.
+Each group has its own confirmation prompt. Declining one skips it and continues to the next. Sessions that can't be matched to any project go to `_UNKNOWN/`. Nothing is permanently deleted; unwanted folders are soft-deleted to a `_DELETE/` directory in the archive root.
 
-See [`docs/CLI.md#reconcile`](docs/CLI.md#reconcile) for the full flag reference.
+See [`docs/CLI.md#reconcile`](docs/CLI.md#reconcile) for the full flag reference and [`docs/RECONCILE_FLOW.md`](docs/RECONCILE_FLOW.md) for decision flowcharts.
 
 ## Related projects
 
