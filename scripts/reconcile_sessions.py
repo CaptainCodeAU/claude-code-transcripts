@@ -1046,16 +1046,43 @@ def format_move_plan(plan: list[PlannedMove]) -> str:
     return "\n".join(lines)
 
 
-def reindex_archive(archive_path: Path) -> None:
+@dataclass
+class IndexChange:
+    path: Path
+    name: str
+    old_size: int
+    new_size: int
+
+    @property
+    def delta(self) -> int:
+        return self.new_size - self.old_size
+
+    @property
+    def changed(self) -> bool:
+        return self.old_size != self.new_size
+
+
+def reindex_archive(archive_path: Path) -> list[IndexChange]:
     from claude_code_transcripts import _generate_master_index, _generate_project_index
 
+    changes: list[IndexChange] = []
     projects = scan_archive_for_projects(archive_path)
 
     for project in projects:
         project_dir = archive_path / project["name"]
+        index_path = project_dir / "index.html"
+        old_size = index_path.stat().st_size if index_path.exists() else 0
         _generate_project_index(project, project_dir)
+        new_size = index_path.stat().st_size if index_path.exists() else 0
+        changes.append(IndexChange(index_path, project["name"], old_size, new_size))
 
+    master_path = archive_path / "index.html"
+    old_size = master_path.stat().st_size if master_path.exists() else 0
     _generate_master_index(projects, archive_path)
+    new_size = master_path.stat().st_size if master_path.exists() else 0
+    changes.append(IndexChange(master_path, "index.html (master)", old_size, new_size))
+
+    return changes
 
 
 def move_to_delete_folder(source: Path, archive_path: Path) -> Path:
@@ -1405,9 +1432,26 @@ def main(argv: list[str] | None = None) -> None:
     if not args.no_reindex and not args.dry_run:
         print(f"\n{BOLD}Rebuilding indexes...{RESET}")
         try:
-            reindex_archive(archive_path)
+            changes = reindex_archive(archive_path)
             report.reindexed = True
-            print(f"{GREEN}Indexes rebuilt successfully.{RESET}")
+            updated = [c for c in changes if c.changed]
+            if updated:
+                print(
+                    f"{GREEN}Indexes rebuilt.{RESET} {CYAN}{len(updated)}{RESET} updated:"
+                )
+                for c in updated:
+                    delta = c.delta
+                    if delta > 0:
+                        delta_str = f"{GREEN}+{_human_size(delta)}{RESET}"
+                    elif delta < 0:
+                        delta_str = f"{YELLOW}-{_human_size(abs(delta))}{RESET}"
+                    else:
+                        delta_str = "no change"
+                    if c.old_size == 0:
+                        delta_str = f"{GREEN}new ({_human_size(c.new_size)}){RESET}"
+                    print(f"  {DIM}{c.name}{RESET}  ({delta_str})")
+            else:
+                print(f"{GREEN}Indexes rebuilt. No changes.{RESET}")
         except Exception as e:
             print(f"{RED}Reindex failed: {e}{RESET}", file=sys.stderr)
     elif args.dry_run and not args.no_reindex:
