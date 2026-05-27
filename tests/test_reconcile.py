@@ -952,7 +952,7 @@ class TestFormatMovePlan:
         output = format_move_plan(plan)
         assert "aaaaaaaa-0000-0000-0000-000000000001" in output
         assert "MyProject" in output
-        assert "MOVE" in output
+        assert "Move" in output
 
     def test_shows_move_group_with_new_tag(self):
         plan = [
@@ -968,7 +968,7 @@ class TestFormatMovePlan:
             ),
         ]
         output = format_move_plan(plan)
-        assert "MOVE" in output
+        assert "Move" in output
         assert "new project" in output
 
     def test_shows_replace_group_with_delta(self, tmp_path):
@@ -989,7 +989,7 @@ class TestFormatMovePlan:
             ),
         ]
         output = format_move_plan(plan)
-        assert "REPLACE" in output
+        assert "Replace" in output
         assert "+100 B" in output
 
     def test_groups_skip_duplicates(self):
@@ -1006,7 +1006,7 @@ class TestFormatMovePlan:
             ),
         ]
         output = format_move_plan(plan)
-        assert "ALREADY ORGANIZED" in output
+        assert "duplicate" in output.lower()
         assert "aaa" in output
 
     def test_empty_plan_returns_empty(self):
@@ -1143,7 +1143,7 @@ class TestMainDryRun:
         main(["--dry-run", "--yes", str(tmp_path)])
 
         captured = capsys.readouterr()
-        assert "ALREADY ORGANIZED" in captured.out
+        assert "duplicate" in captured.out.lower()
 
     def test_verbose_dry_run_shows_targets(self, tmp_path, capsys):
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
@@ -1370,7 +1370,7 @@ class TestMainDryRun:
         main(["--dry-run", "--yes", str(tmp_path)])
 
         captured = capsys.readouterr()
-        assert "ALREADY ORGANIZED" in captured.out
+        assert "duplicate" in captured.out.lower()
         assert uuid in captured.out
 
     def test_move_plan_shows_replace(self, tmp_path, capsys):
@@ -1391,7 +1391,7 @@ class TestMainDryRun:
         main(["--dry-run", "--yes", str(tmp_path)])
 
         captured = capsys.readouterr()
-        assert "REPLACE" in captured.out
+        assert "Replace" in captured.out
 
     @patch("reconcile_sessions.subprocess")
     def test_no_reindex_skips_index_rebuild(self, mock_subprocess, tmp_path, capsys):

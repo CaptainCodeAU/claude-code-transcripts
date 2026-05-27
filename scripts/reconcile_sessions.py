@@ -1000,32 +1000,29 @@ def format_move_plan(plan: list[PlannedMove]) -> str:
 
     if replaces:
         lines.append(
-            f"{BOLD}[{YELLOW}REPLACE{RESET}{BOLD}]{RESET} ({CYAN}{len(replaces)}{RESET})"
+            f"{BOLD}{YELLOW}Replace {CYAN}{len(replaces)}{RESET}{BOLD}{YELLOW} session{'s' if len(replaces) != 1 else ''}?{RESET} {DIM}(old copies backed up to _DELETE){RESET}"
         )
         _format_group(replaces, show_delta=True)
 
     if moves:
         lines.append(
-            f"{BOLD}[{BLUE}MOVE{RESET}{BOLD}]{RESET} ({CYAN}{len(moves)}{RESET})"
+            f"{BOLD}{BLUE}Move {CYAN}{len(moves)}{RESET}{BOLD}{BLUE} session{'s' if len(moves) != 1 else ''}?{RESET}"
         )
         _format_group(moves, show_new_tag=True)
 
     if unknowns:
         lines.append(
-            f"{BOLD}[{YELLOW}SKIP – UNKNOWN PROJECT{RESET}{BOLD}]{RESET} ({CYAN}{len(unknowns)}{RESET})"
+            f"{BOLD}{YELLOW}Move {CYAN}{len(unknowns)}{RESET}{BOLD}{YELLOW} session{'s' if len(unknowns) != 1 else ''} to _UNKNOWN?{RESET}"
         )
         _format_group(unknowns)
 
     if skips:
         lines.append(
-            f"{BOLD}[{CYAN}SKIP – ALREADY ORGANIZED{RESET}{BOLD}]{RESET} ({CYAN}{len(skips)}{RESET})"
+            f"{BOLD}{CYAN}Move {len(skips)} duplicate{'s' if len(skips) != 1 else ''} to _DELETE?{RESET}"
         )
         _format_group(skips, compact=True)
 
     total_count = len([p for p in plan if p.duplicate_status != "skip"])
-    total_size = sum(
-        p.size_delta for p in plan if p.duplicate_status != "skip" and p.size_delta > 0
-    )
     incoming_sizes = []
     for p in plan:
         if p.duplicate_status == "skip":
@@ -1273,22 +1270,26 @@ def main(argv: list[str] | None = None) -> None:
         # Display additional groups (empty, unrecognized)
         if empties:
             print(
-                f"{BOLD}[{RED}EMPTY{RESET}{BOLD}]{RESET} ({CYAN}{len(empties)}{RESET})"
+                f"{BOLD}{RED}Move {CYAN}{len(empties)}{RESET}{BOLD}{RED} empty folder{'s' if len(empties) != 1 else ''} to _DELETE?{RESET}"
             )
             for folder in empties[:15]:
-                print(f"  {folder.path.name}")
+                print(f"  {DIM}{folder.path.name}{RESET}")
             if len(empties) > 15:
-                print(f"  ... and {CYAN}{len(empties) - 15}{RESET} more")
+                print(
+                    f"  {DIM}... and {CYAN}{len(empties) - 15}{RESET}{DIM} more{RESET}"
+                )
             print()
 
         if others:
             print(
-                f"{BOLD}[{RED}UNRECOGNIZED{RESET}{BOLD}]{RESET} ({CYAN}{len(others)}{RESET})"
+                f"{BOLD}{RED}Move {CYAN}{len(others)}{RESET}{BOLD}{RED} unrecognized folder{'s' if len(others) != 1 else ''} to _DELETE?{RESET}"
             )
             for folder in others[:15]:
-                print(f"  {folder.path.name}")
+                print(f"  {DIM}{folder.path.name}{RESET}")
             if len(others) > 15:
-                print(f"  ... and {CYAN}{len(others) - 15}{RESET} more")
+                print(
+                    f"  {DIM}... and {CYAN}{len(others) - 15}{RESET}{DIM} more{RESET}"
+                )
             print()
 
         # Build lookup: uuid -> (CategorizedFolder, is_jsonl)
@@ -1342,45 +1343,38 @@ def main(argv: list[str] | None = None) -> None:
                 except OSError as e:
                     report.outliers.append((p.name, f"Cleanup failed: {e}"))
 
-        # Prompt for each group
+        # Prompt for each group (heading in the plan doubles as the question)
         if replaces:
             if confirm(
-                f"Replace {len(replaces)} session{'s' if len(replaces) != 1 else ''}? (old copies backed up to _DELETE)",
+                f"Proceed with replacing {len(replaces)} session{'s' if len(replaces) != 1 else ''}?",
                 args.yes,
             ):
                 _process_group(replaces)
             else:
-                print(
-                    f"  {YELLOW}Skipped: {len(replaces)} session{'s' if len(replaces) != 1 else ''} not replaced.{RESET}"
-                )
+                print(f"  {YELLOW}Skipped.{RESET}")
             print()
 
         if moves:
             if confirm(
-                f"Move {len(moves)} session{'s' if len(moves) != 1 else ''}?",
+                f"Proceed with moving {len(moves)} session{'s' if len(moves) != 1 else ''}?",
                 args.yes,
             ):
                 _process_group(moves)
             else:
-                print(
-                    f"  {YELLOW}Skipped: {len(moves)} session{'s' if len(moves) != 1 else ''} not moved.{RESET}"
-                )
+                print(f"  {YELLOW}Skipped.{RESET}")
             print()
 
         if unknowns:
             if confirm(
-                f"Move {len(unknowns)} session{'s' if len(unknowns) != 1 else ''} to _UNKNOWN?",
+                f"Proceed with moving {len(unknowns)} session{'s' if len(unknowns) != 1 else ''} to _UNKNOWN?",
                 args.yes,
             ):
                 _process_group(unknowns)
             else:
-                print(
-                    f"  {YELLOW}Skipped: {len(unknowns)} unknown session{'s' if len(unknowns) != 1 else ''} not moved.{RESET}"
-                )
+                print(f"  {YELLOW}Skipped.{RESET}")
             print()
 
         if skips:
-            # Tally for report regardless of user choice
             for entry in skips:
                 cat_folder, is_jsonl = folder_lookup[entry.uuid]
                 result = MoveResult(
@@ -1393,39 +1387,33 @@ def main(argv: list[str] | None = None) -> None:
                 _tally_result(result, report, is_jsonl_category=is_jsonl)
 
             if confirm(
-                f"Move {len(skips)} duplicate orphan{'s' if len(skips) != 1 else ''} to _DELETE?",
+                f"Proceed with moving {len(skips)} duplicate{'s' if len(skips) != 1 else ''} to _DELETE?",
                 args.yes,
             ):
                 _move_to_delete(report.duplicate_paths, "duplicate orphans")
             else:
-                print(
-                    f"  {YELLOW}Skipped: {len(skips)} duplicate{'s' if len(skips) != 1 else ''} left in place.{RESET}"
-                )
+                print(f"  {YELLOW}Skipped.{RESET}")
             print()
 
         if empties:
             if confirm(
-                f"Move {len(empties)} empty folder{'s' if len(empties) != 1 else ''} to _DELETE?",
+                f"Proceed with moving {len(empties)} empty folder{'s' if len(empties) != 1 else ''} to _DELETE?",
                 args.yes,
             ):
                 _move_to_delete(report.empty_paths, "empty folders")
             else:
-                print(
-                    f"  {YELLOW}Skipped: {len(empties)} empty folder{'s' if len(empties) != 1 else ''} left in place.{RESET}"
-                )
+                print(f"  {YELLOW}Skipped.{RESET}")
             print()
 
         if others:
             if confirm(
-                f"Move {len(others)} unrecognized folder{'s' if len(others) != 1 else ''} to _DELETE?",
+                f"Proceed with moving {len(others)} unrecognized folder{'s' if len(others) != 1 else ''} to _DELETE?",
                 args.yes,
             ):
                 other_paths = [f.path for f in others]
                 _move_to_delete(other_paths, "unrecognized folders")
             else:
-                print(
-                    f"  {YELLOW}Skipped: {len(others)} unrecognized folder{'s' if len(others) != 1 else ''} left in place.{RESET}"
-                )
+                print(f"  {YELLOW}Skipped.{RESET}")
             print()
 
     # Reindex (skip for dry-run and --no-reindex)
