@@ -1300,8 +1300,8 @@ class TestMainDryRun:
         assert organized.exists()
         delete_dir = tmp_path / "_DELETE"
         assert delete_dir.exists()
-        assert (delete_dir / uuid_dup).exists()
-        assert (delete_dir / uuid_empty).exists()
+        assert (delete_dir / "duplicates" / uuid_dup).exists()
+        assert (delete_dir / "empty" / uuid_empty).exists()
 
     def test_cleanup_dry_run_preserves_folders(self, tmp_path, capsys):
         uuid_dup = "aaaaaaaa-0000-0000-0000-000000000001"
@@ -1437,20 +1437,20 @@ class TestMoveToDeleteFolder:
         result = move_to_delete_folder(source, tmp_path)
 
         assert not source.exists()
-        assert result.parent.name == "_DELETE"
-        assert (tmp_path / "_DELETE" / source.name / "test.txt").exists()
+        assert result.parent.name == "duplicates"
+        assert (tmp_path / "_DELETE" / "duplicates" / source.name / "test.txt").exists()
 
-    def test_creates_delete_dir(self, tmp_path):
+    def test_creates_delete_dir_with_subfolder(self, tmp_path):
         source = tmp_path / "aaaaaaaa-0000-0000-0000-000000000001"
         source.mkdir()
 
-        move_to_delete_folder(source, tmp_path)
+        move_to_delete_folder(source, tmp_path, subfolder="empty")
 
-        assert (tmp_path / "_DELETE").exists()
+        assert (tmp_path / "_DELETE" / "empty").exists()
 
     def test_collision_appends_suffix(self, tmp_path):
-        (tmp_path / "_DELETE").mkdir()
-        existing = tmp_path / "_DELETE" / "aaa"
+        (tmp_path / "_DELETE" / "duplicates").mkdir(parents=True)
+        existing = tmp_path / "_DELETE" / "duplicates" / "aaa"
         existing.mkdir()
 
         source = tmp_path / "aaa"
@@ -1460,12 +1460,12 @@ class TestMoveToDeleteFolder:
         result = move_to_delete_folder(source, tmp_path)
 
         assert result.name == "aaa-1"
-        assert (tmp_path / "_DELETE" / "aaa-1" / "file.txt").exists()
+        assert (tmp_path / "_DELETE" / "duplicates" / "aaa-1" / "file.txt").exists()
 
     def test_multiple_collisions(self, tmp_path):
-        (tmp_path / "_DELETE").mkdir()
-        (tmp_path / "_DELETE" / "aaa").mkdir()
-        (tmp_path / "_DELETE" / "aaa-1").mkdir()
+        (tmp_path / "_DELETE" / "duplicates").mkdir(parents=True)
+        (tmp_path / "_DELETE" / "duplicates" / "aaa").mkdir()
+        (tmp_path / "_DELETE" / "duplicates" / "aaa-1").mkdir()
 
         source = tmp_path / "aaa"
         source.mkdir()

@@ -403,7 +403,7 @@ def _handle_duplicate(
                 ),
                 True,
             )
-        move_to_delete_folder(target_dir, archive_path)
+        move_to_delete_folder(target_dir, archive_path, subfolder="replaced")
         return None, True
 
     return (
@@ -1099,9 +1099,11 @@ def reindex_archive(archive_path: Path) -> list[IndexChange]:
     return changes
 
 
-def move_to_delete_folder(source: Path, archive_path: Path) -> Path:
-    delete_dir = archive_path / "_DELETE"
-    delete_dir.mkdir(exist_ok=True)
+def move_to_delete_folder(
+    source: Path, archive_path: Path, subfolder: str = "duplicates"
+) -> Path:
+    delete_dir = archive_path / "_DELETE" / subfolder
+    delete_dir.mkdir(parents=True, exist_ok=True)
     target = delete_dir / source.name
     if not target.exists():
         shutil.move(str(source), str(target))
@@ -1343,16 +1345,18 @@ def main(argv: list[str] | None = None) -> None:
                     )
                 _tally_result(result, report, is_jsonl_category=is_jsonl)
 
-        def _move_to_delete(paths: list[Path], label: str) -> None:
+        def _move_to_delete(
+            paths: list[Path], label: str, subfolder: str = "duplicates"
+        ) -> None:
             if args.dry_run:
                 print(
-                    f"  {YELLOW}Dry run: would move {len(paths)} {label} to _DELETE{RESET}"
+                    f"  {YELLOW}Dry run: would move {len(paths)} {label} to _DELETE/{subfolder}{RESET}"
                 )
                 return
             for p in paths:
                 try:
                     if p.exists():
-                        move_to_delete_folder(p, archive_path)
+                        move_to_delete_folder(p, archive_path, subfolder=subfolder)
                         if p in report.duplicate_paths:
                             report.cleaned_duplicates += 1
                         else:
@@ -1407,7 +1411,9 @@ def main(argv: list[str] | None = None) -> None:
                 f"Proceed with moving {len(skips)} duplicate{'s' if len(skips) != 1 else ''} to _DELETE?",
                 args.yes,
             ):
-                _move_to_delete(report.duplicate_paths, "duplicate orphans")
+                _move_to_delete(
+                    report.duplicate_paths, "duplicate orphans", subfolder="duplicates"
+                )
             else:
                 print(f"  {YELLOW}Skipped.{RESET}")
             print()
@@ -1417,7 +1423,7 @@ def main(argv: list[str] | None = None) -> None:
                 f"Proceed with moving {len(empties)} empty folder{'s' if len(empties) != 1 else ''} to _DELETE?",
                 args.yes,
             ):
-                _move_to_delete(report.empty_paths, "empty folders")
+                _move_to_delete(report.empty_paths, "empty folders", subfolder="empty")
             else:
                 print(f"  {YELLOW}Skipped.{RESET}")
             print()
@@ -1428,7 +1434,9 @@ def main(argv: list[str] | None = None) -> None:
                 args.yes,
             ):
                 other_paths = [f.path for f in others]
-                _move_to_delete(other_paths, "unrecognized folders")
+                _move_to_delete(
+                    other_paths, "unrecognized folders", subfolder="unrecognized"
+                )
             else:
                 print(f"  {YELLOW}Skipped.{RESET}")
             print()
