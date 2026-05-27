@@ -53,6 +53,12 @@ ASCII flowcharts showing the decision logic in `scripts/reconcile_sessions.py`.
      |                     |
      └──────────┬──────────┘
                 v
+       ┌────────┴──────────────┐
+       │ Fix project folder     │
+       │ mtimes for affected    │
+       │ projects (see Flow #7) │
+       └────────┬──────────────┘
+                v
        ┌────────┴─────────┐
        │ Archive changed?  │
        │ (any files moved, │
@@ -369,4 +375,58 @@ Declining one skips it and continues to the next.
  - --yes auto-confirms all prompts
  - Reindex only runs when the archive actually changed
  - Groups with zero entries are not shown and not prompted
+```
+
+## 7. Project Folder Mtime Correction
+
+Two paths trigger project folder mtime correction:
+
+```
+ ┌───────────────────────────────────────────────────────┐
+ │                 Trigger                                │
+ └───────────────────────┬───────────────────────────────┘
+                         |
+           ┌─────────────┴─────────────┐
+           v                           v
+ ┌───────────────────┐       ┌───────────────────┐
+ │ Normal reconcile  │       │ --fix-mtimes flag  │
+ │ (after moves)     │       │ (bulk correction)  │
+ └─────────┬─────────┘       └─────────┬─────────┘
+           v                           v
+ ┌───────────────────┐       ┌───────────────────┐
+ │ Scope: AFFECTED   │       │ Scope: ALL         │
+ │ projects only     │       │ projects + _UNKNOWN │
+ │ (from report.     │       │                     │
+ │  projects_affected)│       │ Also fixes each    │
+ └─────────┬─────────┘       │ session folder     │
+           |                  │ first via          │
+           |                  │ fix_session_mtime()│
+           |                  └─────────┬─────────┘
+           └─────────────┬──────────────┘
+                         v
+              ┌──────────┴───────────┐
+              │  fix_project_mtime() │
+              │  for each project    │
+              └──────────┬───────────┘
+                         v
+              ┌──────────────────────┐
+              │ For each session     │
+              │ subfolder:           │
+              │  Find .jsonl file    │
+              │  extract_last_       │
+              │  timestamp()         │
+              │  (ISO 8601 from      │
+              │  JSONL content,      │
+              │  NOT file mtime)     │
+              │  Track max timestamp │
+              └──────────┬───────────┘
+                         v
+                ┌────────┴────────┐
+                │ max_ts > 0?     │
+                └────────┬────────┘
+              no  ┌──────┴──────┐  yes
+                  v             v
+              Return None   Set project folder
+              (no valid     mtime = max_ts
+              sessions)     via os.utime()
 ```
