@@ -67,7 +67,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--cleanup",
         action="store_true",
-        help="Delete verified duplicate and empty orphan folders after reconciliation.",
+        help="Legacy flag (no longer required). Cleanup prompts now appear automatically.",
     )
     parser.add_argument(
         "--verbose",
@@ -243,6 +243,40 @@ def _find_jsonl_in_dir(d: Path) -> Path | None:
     return jsonl_files[0] if jsonl_files else None
 
 
+def _human_size(size_bytes: int) -> str:
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    size = float(size_bytes)
+    for unit in ("KB", "MB", "GB", "TB"):
+        size /= 1024
+        if size < 1024 or unit == "TB":
+            return f"{size:.1f} {unit}"
+    return f"{size:.1f} TB"
+
+
+def _relative_age(mtime: float) -> str:
+    delta = int(time.time() - mtime)
+    if delta < 60:
+        return "just now"
+    if delta < 3600:
+        m = delta // 60
+        return f"{m} min{'s' if m != 1 else ''} ago"
+    if delta < 86400:
+        h = delta // 3600
+        return f"{h} hour{'s' if h != 1 else ''} ago"
+    if delta < 604800:
+        d = delta // 86400
+        return f"{d} day{'s' if d != 1 else ''} ago"
+    if delta < 2592000:
+        w = delta // 604800
+        return f"{w} week{'s' if w != 1 else ''} ago"
+    if delta < 31536000:
+        mo = delta // 2592000
+        return f"{mo} month{'s' if mo != 1 else ''} ago"
+    y = delta // 31536000
+    return f"{y} year{'s' if y != 1 else ''} ago"
+
+
 def compare_session_copies(orphan_dir: Path, organized_dir: Path) -> tuple[str, str]:
     orphan_jsonl = _find_jsonl_in_dir(orphan_dir)
     organized_jsonl = _find_jsonl_in_dir(organized_dir)
@@ -254,15 +288,21 @@ def compare_session_copies(orphan_dir: Path, organized_dir: Path) -> tuple[str, 
         except OSError:
             return "identical", "stat failed"
         if orphan_size > organized_size:
-            return "orphan", f"JSONL {orphan_size} > {organized_size} bytes"
+            return (
+                "orphan",
+                f"incoming {_human_size(orphan_size)} vs existing {_human_size(organized_size)}",
+            )
         if organized_size > orphan_size:
-            return "organized", f"JSONL {organized_size} > {orphan_size} bytes"
-        return "identical", f"JSONL sizes match ({orphan_size} bytes)"
+            return (
+                "organized",
+                f"existing {_human_size(organized_size)} vs incoming {_human_size(orphan_size)}",
+            )
+        return "identical", f"both {_human_size(orphan_size)}"
 
     if orphan_jsonl and not organized_jsonl:
-        return "orphan", "only orphan has JSONL"
+        return "orphan", "only incoming has JSONL"
     if organized_jsonl and not orphan_jsonl:
-        return "organized", "only organized has JSONL"
+        return "organized", "only existing has JSONL"
 
     try:
         orphan_mtime = max(
@@ -325,7 +365,7 @@ def _handle_duplicate(
                 ),
                 True,
             )
-        shutil.rmtree(str(target_dir))
+        move_to_delete_folder(target_dir, archive_path)
         return None, True
 
     return (
@@ -524,7 +564,7 @@ def scan_archive_for_projects(archive_path: Path) -> list[dict]:
     for entry in sorted(archive_path.iterdir(), key=lambda p: p.name):
         if not entry.is_dir() or entry.is_symlink():
             continue
-        if entry.name.startswith("."):
+        if entry.name.startswith(".") or entry.name.startswith("_"):
             continue
         if UUID_PATTERN.match(entry.name):
             continue
@@ -609,27 +649,44 @@ class ReconciliationReport:
     elapsed_seconds: float = 0.0
 
 
+@dataclass
+class PlannedMove:
+    uuid: str
+    source: Path
+    target_project: str
+    is_new_project: bool
+    duplicate_status: str  # "" | "skip" | "replace"
+    duplicate_reason: str
+    is_unknown: bool
+    category_label: str  # "JSONL" | "HTML"
+    source_mtime: float = 0.0
+    size_delta: int = 0
+    summary: str = ""
+
+
 CATEGORY_LABELS = {
-    Category.A_JSONL: "Has JSONL (can regenerate HTML)",
-    Category.B_HTML_ONLY: "HTML only (no JSONL)",
-    Category.C_EMPTY: "Empty folder",
-    Category.D_OTHER: "Other/unexpected content",
+    Category.A_JSONL: "Full session (JSONL + HTML)",
+    Category.B_HTML_ONLY: "HTML transcript only",
+    Category.C_EMPTY: "Empty (nothing inside)",
+    Category.D_OTHER: "Unrecognized files",
 }
 
 
 def format_category_table(categories: dict[Category, list]) -> str:
     lines = [
-        f"{BOLD}{'Category':<40} {'Count':>6}{RESET}",
-        f"{'':=<47}",
+        f"{BOLD}What's in these folders:{RESET}",
+        "",
+        f"  {BOLD}{'Category':<36} {'Count':>6}{RESET}",
+        f"  {'':=<43}",
     ]
     for cat in Category:
         label = CATEGORY_LABELS[cat]
         count = len(categories[cat])
         color = GREEN if count == 0 else CYAN
-        lines.append(f"  {label:<38} {color}{count:>6}{RESET}")
+        lines.append(f"  {label:<36} {color}{count:>6}{RESET}")
     total = sum(len(v) for v in categories.values())
-    lines.append(f"{'':=<47}")
-    lines.append(f"  {'Total':<38} {BOLD}{total:>6}{RESET}")
+    lines.append(f"  {'':=<43}")
+    lines.append(f"  {'Total':<36} {BOLD}{total:>6}{RESET}")
     return "\n".join(lines)
 
 
@@ -673,14 +730,14 @@ def format_report(report: ReconciliationReport) -> str:
 
     if report.cleaned_duplicates or report.cleaned_empty:
         lines.append("")
-        lines.append(f"  {BOLD}Cleanup:{RESET}")
+        lines.append(f"  {BOLD}Cleanup (moved to _DELETE):{RESET}")
         if report.cleaned_duplicates:
             lines.append(
-                f"    Deleted duplicates:   {GREEN}{report.cleaned_duplicates:>4}{RESET}"
+                f"    Duplicates:           {GREEN}{report.cleaned_duplicates:>4}{RESET}"
             )
         if report.cleaned_empty:
             lines.append(
-                f"    Deleted empty:        {GREEN}{report.cleaned_empty:>4}{RESET}"
+                f"    Empty:                {GREEN}{report.cleaned_empty:>4}{RESET}"
             )
 
     if report.elapsed_seconds > 0:
@@ -695,6 +752,258 @@ def format_report(report: ReconciliationReport) -> str:
     return "\n".join(lines)
 
 
+def compute_move_plan(
+    categories: dict[Category, list[CategorizedFolder]],
+    archive_path: Path,
+    existing_projects: list[str],
+) -> list[PlannedMove]:
+    plan: list[PlannedMove] = []
+    seen_projects = list(existing_projects)
+
+    for folder in categories[Category.A_JSONL]:
+        uuid = folder.path.name
+        if not folder.cwd:
+            target_name = UNKNOWN_PROJECT
+            is_new = target_name not in seen_projects
+            is_unknown = True
+        else:
+            target_name, is_new = resolve_target_project(folder.cwd, seen_projects)
+            is_unknown = False
+
+        target_dir = archive_path / target_name / uuid
+        duplicate_status = ""
+        duplicate_reason = ""
+        size_delta = 0
+        if target_dir.exists():
+            winner, reason = compare_session_copies(folder.path, target_dir)
+            duplicate_status = "replace" if winner == "orphan" else "skip"
+            duplicate_reason = reason
+            if duplicate_status == "replace":
+                orphan_jsonl = _find_jsonl_in_dir(folder.path)
+                organized_jsonl = _find_jsonl_in_dir(target_dir)
+                if orphan_jsonl and organized_jsonl:
+                    try:
+                        size_delta = (
+                            orphan_jsonl.stat().st_size - organized_jsonl.stat().st_size
+                        )
+                    except OSError:
+                        pass
+
+        source_mtime = 0.0
+        if folder.jsonl_path and folder.jsonl_path.exists():
+            try:
+                source_mtime = folder.jsonl_path.stat().st_mtime
+            except OSError:
+                pass
+
+        summary = ""
+        if folder.jsonl_path and folder.jsonl_path.exists():
+            try:
+                raw = get_session_summary(folder.jsonl_path, max_length=80)
+                if raw and raw != "(no summary)":
+                    cleaned = " ".join(raw.split())
+                    summary = cleaned[:60] + "..." if len(cleaned) > 60 else cleaned
+            except Exception:
+                pass
+
+        if is_new and target_name not in seen_projects:
+            seen_projects.append(target_name)
+
+        plan.append(
+            PlannedMove(
+                uuid=uuid,
+                source=folder.path,
+                target_project=target_name,
+                is_new_project=is_new,
+                duplicate_status=duplicate_status,
+                duplicate_reason=duplicate_reason,
+                is_unknown=is_unknown,
+                category_label="JSONL",
+                source_mtime=source_mtime,
+                size_delta=size_delta,
+                summary=summary,
+            )
+        )
+
+    for folder in categories[Category.B_HTML_ONLY]:
+        uuid = folder.path.name
+        project_name = None
+        for html_file in folder.html_files:
+            project_name = extract_project_from_html(html_file)
+            if project_name:
+                break
+
+        if not project_name:
+            target_name = UNKNOWN_PROJECT
+            is_new = target_name not in seen_projects
+            is_unknown = True
+        else:
+            match = find_matching_project(project_name, seen_projects)
+            is_new = match is None
+            target_name = match or project_name
+            is_unknown = False
+
+        target_dir = archive_path / target_name / uuid
+        duplicate_status = ""
+        duplicate_reason = ""
+        size_delta = 0
+        if target_dir.exists():
+            winner, reason = compare_session_copies(folder.path, target_dir)
+            duplicate_status = "replace" if winner == "orphan" else "skip"
+            duplicate_reason = reason
+            if duplicate_status == "replace":
+                orphan_jsonl = _find_jsonl_in_dir(folder.path)
+                organized_jsonl = _find_jsonl_in_dir(target_dir)
+                if orphan_jsonl and organized_jsonl:
+                    try:
+                        size_delta = (
+                            orphan_jsonl.stat().st_size - organized_jsonl.stat().st_size
+                        )
+                    except OSError:
+                        pass
+
+        source_mtime = 0.0
+        html_for_mtime = folder.html_files[0] if folder.html_files else None
+        if html_for_mtime and html_for_mtime.exists():
+            try:
+                source_mtime = html_for_mtime.stat().st_mtime
+            except OSError:
+                pass
+
+        if is_new and target_name not in seen_projects:
+            seen_projects.append(target_name)
+
+        plan.append(
+            PlannedMove(
+                uuid=uuid,
+                source=folder.path,
+                target_project=target_name,
+                is_new_project=is_new,
+                duplicate_status=duplicate_status,
+                duplicate_reason=duplicate_reason,
+                is_unknown=is_unknown,
+                category_label="HTML",
+                source_mtime=source_mtime,
+                size_delta=size_delta,
+            )
+        )
+
+    return plan
+
+
+def format_move_plan(plan: list[PlannedMove]) -> str:
+    if not plan:
+        return ""
+
+    replaces = sorted(
+        [p for p in plan if p.duplicate_status == "replace"],
+        key=lambda p: p.source_mtime,
+        reverse=True,
+    )
+    moves = sorted(
+        [p for p in plan if p.duplicate_status == "" and not p.is_unknown],
+        key=lambda p: p.source_mtime,
+        reverse=True,
+    )
+    unknowns = sorted(
+        [p for p in plan if p.is_unknown and p.duplicate_status != "skip"],
+        key=lambda p: p.source_mtime,
+        reverse=True,
+    )
+    skips = sorted(
+        [p for p in plan if p.duplicate_status == "skip"],
+        key=lambda p: p.source_mtime,
+        reverse=True,
+    )
+
+    MAX_ENTRIES = 15
+
+    lines = [f"{BOLD}Move plan:{RESET}", ""]
+
+    def _format_entry(
+        p: PlannedMove, show_delta: bool = False, show_new_tag: bool = False
+    ) -> None:
+        delta_str = ""
+        if show_delta and p.size_delta > 0:
+            delta_str = f"  ({GREEN}+{_human_size(p.size_delta)}{RESET})"
+        elif show_delta and p.size_delta < 0:
+            delta_str = f"  ({YELLOW}-{_human_size(abs(p.size_delta))}{RESET})"
+        age_str = ""
+        if p.source_mtime:
+            age_str = f"  ({_relative_age(p.source_mtime)})"
+        new_tag = ""
+        if show_new_tag and p.is_new_project:
+            new_tag = f"  {GREEN}(new project){RESET}"
+        lines.append(f"  {p.uuid} → {p.target_project}{delta_str}{age_str}{new_tag}")
+
+    def _format_group(
+        entries: list[PlannedMove],
+        show_delta: bool = False,
+        show_new_tag: bool = False,
+        compact: bool = False,
+    ) -> None:
+        shown = entries[:MAX_ENTRIES]
+        remaining = len(entries) - len(shown)
+        for p in shown:
+            if compact:
+                age_str = (
+                    f"  ({_relative_age(p.source_mtime)})" if p.source_mtime else ""
+                )
+                lines.append(f"  {p.uuid} → {p.target_project}{age_str}")
+            else:
+                _format_entry(p, show_delta=show_delta, show_new_tag=show_new_tag)
+        if remaining > 0:
+            lines.append(f"  ... and {CYAN}{remaining}{RESET} more")
+        lines.append("")
+
+    if replaces:
+        lines.append(
+            f"{BOLD}[{YELLOW}REPLACE{RESET}{BOLD}]{RESET} ({CYAN}{len(replaces)}{RESET})"
+        )
+        _format_group(replaces, show_delta=True)
+
+    if moves:
+        lines.append(
+            f"{BOLD}[{GREEN}MOVE{RESET}{BOLD}]{RESET} ({CYAN}{len(moves)}{RESET})"
+        )
+        _format_group(moves, show_new_tag=True)
+
+    if unknowns:
+        lines.append(
+            f"{BOLD}[{YELLOW}SKIP – UNKNOWN PROJECT{RESET}{BOLD}]{RESET} ({CYAN}{len(unknowns)}{RESET})"
+        )
+        _format_group(unknowns)
+
+    if skips:
+        lines.append(
+            f"{BOLD}[{CYAN}SKIP – ALREADY ORGANIZED{RESET}{BOLD}]{RESET} ({CYAN}{len(skips)}{RESET})"
+        )
+        _format_group(skips, compact=True)
+
+    total_count = len([p for p in plan if p.duplicate_status != "skip"])
+    total_size = sum(
+        p.size_delta for p in plan if p.duplicate_status != "skip" and p.size_delta > 0
+    )
+    incoming_sizes = []
+    for p in plan:
+        if p.duplicate_status == "skip":
+            continue
+        jsonl = _find_jsonl_in_dir(p.source) if p.source.exists() else None
+        if jsonl and jsonl.exists():
+            try:
+                incoming_sizes.append(jsonl.stat().st_size)
+            except OSError:
+                pass
+    total_incoming = sum(incoming_sizes)
+    if total_count:
+        lines.append(
+            f"{BOLD}Total:{RESET} {CYAN}{total_count}{RESET} session{'s' if total_count != 1 else ''}, {CYAN}{_human_size(total_incoming)}{RESET} incoming"
+        )
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def reindex_archive(archive_path: Path) -> None:
     from claude_code_transcripts import _generate_master_index, _generate_project_index
 
@@ -705,6 +1014,69 @@ def reindex_archive(archive_path: Path) -> None:
         _generate_project_index(project, project_dir)
 
     _generate_master_index(projects, archive_path)
+
+
+def move_to_delete_folder(source: Path, archive_path: Path) -> Path:
+    delete_dir = archive_path / "_DELETE"
+    delete_dir.mkdir(exist_ok=True)
+    target = delete_dir / source.name
+    if not target.exists():
+        shutil.move(str(source), str(target))
+        return target
+    counter = 1
+    while True:
+        candidate = delete_dir / f"{source.name}-{counter}"
+        if not candidate.exists():
+            shutil.move(str(source), str(candidate))
+            return candidate
+        counter += 1
+
+
+def format_delete_plan(
+    duplicate_paths: list[Path],
+    empty_paths: list[Path],
+    duplicate_reasons: dict[str, str] | None = None,
+) -> str:
+    if not duplicate_paths and not empty_paths:
+        return ""
+
+    if duplicate_reasons is None:
+        duplicate_reasons = {}
+
+    lines = []
+
+    if duplicate_paths:
+        lines.append(
+            f"{BOLD}[{RED}MOVE TO _DELETE: DUPLICATES{RESET}{BOLD}]{RESET} ({CYAN}{len(duplicate_paths)}{RESET})"
+        )
+        sorted_dups = sorted(duplicate_paths, key=lambda p: p.name)
+        for p in sorted_dups[:15]:
+            reason = duplicate_reasons.get(p.name, "")
+            reason_str = f"  ({reason})" if reason else ""
+            age_str = ""
+            jsonl = _find_jsonl_in_dir(p) if p.exists() else None
+            if jsonl and jsonl.exists():
+                try:
+                    age_str = f"  ({_relative_age(jsonl.stat().st_mtime)})"
+                except OSError:
+                    pass
+            lines.append(f"  {p.name}{reason_str}{age_str}")
+        if len(sorted_dups) > 15:
+            lines.append(f"  ... and {CYAN}{len(sorted_dups) - 15}{RESET} more")
+        lines.append("")
+
+    if empty_paths:
+        lines.append(
+            f"{BOLD}[{RED}MOVE TO _DELETE: EMPTY{RESET}{BOLD}]{RESET} ({CYAN}{len(empty_paths)}{RESET})"
+        )
+        sorted_empty = sorted(empty_paths, key=lambda p: p.name)
+        for p in sorted_empty[:15]:
+            lines.append(f"  {p.name}")
+        if len(sorted_empty) > 15:
+            lines.append(f"  ... and {CYAN}{len(sorted_empty) - 15}{RESET} more")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def confirm(message: str, auto_yes: bool) -> bool:
@@ -782,87 +1154,28 @@ def main(argv: list[str] | None = None) -> None:
 
     if uuid_folders:
         print(
-            f"\n{BOLD}Found {CYAN}{len(uuid_folders)}{RESET}{BOLD} orphan UUID folders{RESET}\n"
+            f"\n{BOLD}Found {CYAN}{len(uuid_folders)}{RESET}{BOLD} orphan UUID folders:{RESET}"
         )
+        for folder in uuid_folders[:20]:
+            print(f"    {folder.name}")
+        if len(uuid_folders) > 20:
+            print(f"    ... and {CYAN}{len(uuid_folders) - 20}{RESET} more")
+        print()
 
         categories = categorize_all(uuid_folders)
         print(format_category_table(categories))
         print()
 
-        if args.dry_run:
-            print(f"{YELLOW}{BOLD}DRY RUN - no changes will be made{RESET}\n")
-
-        if not confirm("Proceed with reconciliation?", args.yes):
-            print("Aborted.")
-            sys.exit(0)
-
         existing = list_existing_projects(archive_path)
+        plan = compute_move_plan(categories, archive_path, existing)
 
-        # Process Category A
-        for i, folder in enumerate(categories[Category.A_JSONL], 1):
-            count = len(categories[Category.A_JSONL])
-            if is_tty:
-                print(
-                    f"\r  Processing JSONL {CYAN}{i}/{count}{RESET}: {folder.path.name}",
-                    end="",
-                    flush=True,
-                )
-            else:
-                print(f"  Processing JSONL {i}/{count}: {folder.path.name}")
-            result = process_category_a(
-                folder, archive_path, existing, args.dry_run, verbose=args.verbose
-            )
-            _tally_result(result, report, is_jsonl_category=True)
-            if args.dry_run and args.verbose:
-                suffix = ""
-                if result.is_new_project:
-                    suffix += " [NEW]"
-                if result.replaced_organized:
-                    suffix += " [REPLACE]"
-                if result.is_duplicate:
-                    suffix += " [DUPLICATE]"
-                if result.is_unknown:
-                    suffix += " [UNKNOWN]"
-                print(f"    {result.uuid} -> {result.target_project}{suffix}")
-        if categories[Category.A_JSONL] and is_tty:
-            print()
-
-        # Process Category B
-        for i, folder in enumerate(categories[Category.B_HTML_ONLY], 1):
-            count = len(categories[Category.B_HTML_ONLY])
-            if is_tty:
-                print(
-                    f"\r  Processing HTML {CYAN}{i}/{count}{RESET}: {folder.path.name}",
-                    end="",
-                    flush=True,
-                )
-            else:
-                print(f"  Processing HTML {i}/{count}: {folder.path.name}")
-            result = process_category_b(
-                folder, archive_path, existing, args.dry_run, verbose=args.verbose
-            )
-            _tally_result(result, report, is_jsonl_category=False)
-            if args.dry_run and args.verbose:
-                suffix = ""
-                if result.is_new_project:
-                    suffix += " [NEW]"
-                if result.replaced_organized:
-                    suffix += " [REPLACE]"
-                if result.is_duplicate:
-                    suffix += " [DUPLICATE]"
-                if result.is_unknown:
-                    suffix += " [UNKNOWN]"
-                print(f"    {result.uuid} -> {result.target_project}{suffix}")
-        if categories[Category.B_HTML_ONLY] and is_tty:
-            print()
-
-        # Flag Category C + D
-        for folder in categories[Category.C_EMPTY]:
+        # Collect Category C + D info
+        empties = categories[Category.C_EMPTY]
+        others = categories[Category.D_OTHER]
+        for folder in empties:
             report.skipped_empty += 1
             report.empty_paths.append(folder.path)
-            report.outliers.append((folder.path.name, "Empty folder"))
-
-        for folder in categories[Category.D_OTHER]:
+        for folder in others:
             report.failed += 1
             try:
                 file_names = sorted(f.name for f in folder.path.iterdir())
@@ -877,36 +1190,168 @@ def main(argv: list[str] | None = None) -> None:
                     (folder.path.name, "Unexpected content (unreadable)")
                 )
 
-    # Cleanup verified duplicates and empties
-    if args.cleanup and not args.dry_run:
-        to_delete = report.duplicate_paths + report.empty_paths
-        if to_delete:
+        # Display move plan
+        plan_output = format_move_plan(plan)
+        if plan_output:
+            print(plan_output)
+
+        # Display additional groups (empty, unrecognized)
+        if empties:
             print(
-                f"\n{BOLD}Cleaning up {CYAN}{len(to_delete)}{RESET}{BOLD} verified duplicate/empty folders...{RESET}"
+                f"{BOLD}[{RED}EMPTY{RESET}{BOLD}]{RESET} ({CYAN}{len(empties)}{RESET})"
             )
+            for folder in empties[:15]:
+                print(f"  {folder.path.name}")
+            if len(empties) > 15:
+                print(f"  ... and {CYAN}{len(empties) - 15}{RESET} more")
+            print()
+
+        if others:
+            print(
+                f"{BOLD}[{RED}UNRECOGNIZED{RESET}{BOLD}]{RESET} ({CYAN}{len(others)}{RESET})"
+            )
+            for folder in others[:15]:
+                print(f"  {folder.path.name}")
+            if len(others) > 15:
+                print(f"  ... and {CYAN}{len(others) - 15}{RESET} more")
+            print()
+
+        if args.dry_run:
+            print(f"{YELLOW}{BOLD}DRY RUN - no changes will be made{RESET}\n")
+
+        # Build lookup: uuid -> (CategorizedFolder, is_jsonl)
+        folder_lookup: dict[str, tuple[CategorizedFolder, bool]] = {}
+        for folder in categories[Category.A_JSONL]:
+            folder_lookup[folder.path.name] = (folder, True)
+        for folder in categories[Category.B_HTML_ONLY]:
+            folder_lookup[folder.path.name] = (folder, False)
+
+        # Split plan into action groups
+        replaces = [p for p in plan if p.duplicate_status == "replace"]
+        moves = [p for p in plan if p.duplicate_status == "" and not p.is_unknown]
+        unknowns = [p for p in plan if p.is_unknown and p.duplicate_status != "skip"]
+        skips = [p for p in plan if p.duplicate_status == "skip"]
+
+        def _process_group(entries: list[PlannedMove]) -> None:
+            for entry in entries:
+                cat_folder, is_jsonl = folder_lookup[entry.uuid]
+                if is_jsonl:
+                    result = process_category_a(
+                        cat_folder,
+                        archive_path,
+                        existing,
+                        args.dry_run,
+                        verbose=args.verbose,
+                    )
+                else:
+                    result = process_category_b(
+                        cat_folder,
+                        archive_path,
+                        existing,
+                        args.dry_run,
+                        verbose=args.verbose,
+                    )
+                _tally_result(result, report, is_jsonl_category=is_jsonl)
+
+        def _move_to_delete(paths: list[Path], label: str) -> None:
+            if args.dry_run:
+                print(
+                    f"  {YELLOW}Dry run: would move {len(paths)} {label} to _DELETE{RESET}"
+                )
+                return
+            for p in paths:
+                try:
+                    if p.exists():
+                        move_to_delete_folder(p, archive_path)
+                        if p in report.duplicate_paths:
+                            report.cleaned_duplicates += 1
+                        else:
+                            report.cleaned_empty += 1
+                except OSError as e:
+                    report.outliers.append((p.name, f"Cleanup failed: {e}"))
+
+        # Prompt for each group
+        if replaces:
             if confirm(
-                f"Delete {len(to_delete)} folders? This cannot be undone.",
+                f"Replace {len(replaces)} session{'s' if len(replaces) != 1 else ''}? (old copies backed up to _DELETE)",
                 args.yes,
             ):
-                for p in to_delete:
-                    try:
-                        if p.exists():
-                            shutil.rmtree(str(p))
-                            if p in report.duplicate_paths:
-                                report.cleaned_duplicates += 1
-                            else:
-                                report.cleaned_empty += 1
-                    except OSError as e:
-                        report.outliers.append((p.name, f"Cleanup failed: {e}"))
-    elif args.cleanup and args.dry_run:
-        count = len(report.duplicate_paths) + len(report.empty_paths)
-        if count:
-            print(
-                f"\n{YELLOW}--cleanup with --dry-run: would delete {count} folders{RESET}"
-            )
+                _process_group(replaces)
+            else:
+                print(
+                    f"  {YELLOW}Skipped: {len(replaces)} session{'s' if len(replaces) != 1 else ''} not replaced.{RESET}"
+                )
 
-    # Reindex (default unless --no-reindex)
-    if not args.no_reindex:
+        if moves:
+            if confirm(
+                f"Move {len(moves)} session{'s' if len(moves) != 1 else ''}?",
+                args.yes,
+            ):
+                _process_group(moves)
+            else:
+                print(
+                    f"  {YELLOW}Skipped: {len(moves)} session{'s' if len(moves) != 1 else ''} not moved.{RESET}"
+                )
+
+        if unknowns:
+            if confirm(
+                f"Move {len(unknowns)} session{'s' if len(unknowns) != 1 else ''} to unknown-project?",
+                args.yes,
+            ):
+                _process_group(unknowns)
+            else:
+                print(
+                    f"  {YELLOW}Skipped: {len(unknowns)} unknown session{'s' if len(unknowns) != 1 else ''} not moved.{RESET}"
+                )
+
+        if skips:
+            # Tally for report regardless of user choice
+            for entry in skips:
+                cat_folder, is_jsonl = folder_lookup[entry.uuid]
+                result = MoveResult(
+                    uuid=entry.uuid,
+                    source=entry.source,
+                    target_project=entry.target_project,
+                    success=True,
+                    is_duplicate=True,
+                )
+                _tally_result(result, report, is_jsonl_category=is_jsonl)
+
+            if confirm(
+                f"Move {len(skips)} duplicate orphan{'s' if len(skips) != 1 else ''} to _DELETE?",
+                args.yes,
+            ):
+                _move_to_delete(report.duplicate_paths, "duplicate orphans")
+            else:
+                print(
+                    f"  {YELLOW}Skipped: {len(skips)} duplicate{'s' if len(skips) != 1 else ''} left in place.{RESET}"
+                )
+
+        if empties:
+            if confirm(
+                f"Move {len(empties)} empty folder{'s' if len(empties) != 1 else ''} to _DELETE?",
+                args.yes,
+            ):
+                _move_to_delete(report.empty_paths, "empty folders")
+            else:
+                print(
+                    f"  {YELLOW}Skipped: {len(empties)} empty folder{'s' if len(empties) != 1 else ''} left in place.{RESET}"
+                )
+
+        if others:
+            if confirm(
+                f"Move {len(others)} unrecognized folder{'s' if len(others) != 1 else ''} to _DELETE?",
+                args.yes,
+            ):
+                other_paths = [f.path for f in others]
+                _move_to_delete(other_paths, "unrecognized folders")
+            else:
+                print(
+                    f"  {YELLOW}Skipped: {len(others)} unrecognized folder{'s' if len(others) != 1 else ''} left in place.{RESET}"
+                )
+
+    # Reindex (skip for dry-run and --no-reindex)
+    if not args.no_reindex and not args.dry_run:
         print(f"\n{BOLD}Rebuilding indexes...{RESET}")
         try:
             reindex_archive(archive_path)
@@ -914,6 +1359,8 @@ def main(argv: list[str] | None = None) -> None:
             print(f"{GREEN}Indexes rebuilt successfully.{RESET}")
         except Exception as e:
             print(f"{RED}Reindex failed: {e}{RESET}", file=sys.stderr)
+    elif args.dry_run and not args.no_reindex:
+        print(f"\n  Reindex: {YELLOW}skipped (dry run){RESET}")
 
     report.elapsed_seconds = time.monotonic() - start_time
     print(format_report(report))

@@ -1,6 +1,7 @@
 """Tests for scripts/reconcile_sessions.py"""
 
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -15,19 +16,26 @@ from reconcile_sessions import (
     UUID_PATTERN,
     Category,
     MoveResult,
+    PlannedMove,
     ReconciliationReport,
+    _human_size,
+    _relative_age,
     categorize_all,
     categorize_folder,
     compare_session_copies,
+    compute_move_plan,
     cwd_to_project_name,
     extract_cwd_from_jsonl,
     extract_project_from_html,
     find_matching_project,
     find_uuid_folders,
     format_category_table,
+    format_delete_plan,
+    format_move_plan,
     format_report,
     list_existing_projects,
     main,
+    move_to_delete_folder,
     parse_args,
     process_category_a,
     process_category_b,
@@ -377,6 +385,51 @@ class TestExtractProjectFromHtml:
         assert extract_project_from_html(tmp_path / "missing.html") is None
 
 
+# --- Phase 4c: Human-readable sizes ---
+
+
+class TestHumanSize:
+    def test_bytes(self):
+        assert _human_size(0) == "0 B"
+        assert _human_size(100) == "100 B"
+        assert _human_size(999) == "999 B"
+
+    def test_kilobytes(self):
+        assert _human_size(1024) == "1.0 KB"
+        assert _human_size(1536) == "1.5 KB"
+        assert _human_size(10240) == "10.0 KB"
+
+    def test_megabytes(self):
+        assert _human_size(1048576) == "1.0 MB"
+        assert _human_size(1039430) == "1015.1 KB"
+        assert _human_size(3295100) == "3.1 MB"
+
+    def test_gigabytes(self):
+        assert _human_size(1073741824) == "1.0 GB"
+
+
+class TestRelativeAge:
+    def test_just_now(self):
+        assert _relative_age(time.time()) == "just now"
+
+    def test_minutes(self):
+        assert _relative_age(time.time() - 120) == "2 mins ago"
+
+    def test_hours(self):
+        assert _relative_age(time.time() - 7200) == "2 hours ago"
+
+    def test_days(self):
+        assert _relative_age(time.time() - 259200) == "3 days ago"
+
+    def test_weeks(self):
+        assert _relative_age(time.time() - 1209600) == "2 weeks ago"
+
+    def test_singular(self):
+        assert _relative_age(time.time() - 3600) == "1 hour ago"
+        assert _relative_age(time.time() - 86400) == "1 day ago"
+        assert _relative_age(time.time() - 604800) == "1 week ago"
+
+
 # --- Phase 5: Duplicate comparison + Processing ---
 
 
@@ -400,7 +453,7 @@ class TestCompareSessionCopies:
         (b / "session.jsonl").write_text("y" * 100)
         winner, reason = compare_session_copies(a, b)
         assert winner == "orphan"
-        assert "200" in reason
+        assert "200 B" in reason
 
     def test_organized_larger_jsonl(self, tmp_path):
         a = tmp_path / "orphan"
@@ -411,7 +464,7 @@ class TestCompareSessionCopies:
         (b / "session.jsonl").write_text("y" * 300)
         winner, reason = compare_session_copies(a, b)
         assert winner == "organized"
-        assert "300" in reason
+        assert "300 B" in reason
 
     def test_only_orphan_has_jsonl(self, tmp_path):
         a = tmp_path / "orphan"
@@ -757,6 +810,258 @@ class TestScanArchiveForProjects:
         assert len(result[0]["sessions"]) == 0
 
 
+# --- Phase 6b: Move plan ---
+
+
+class TestComputeMovePlan:
+    def test_jsonl_to_existing_project(self, tmp_path):
+        uuid = "aaaaaaaa-0000-0000-0000-000000000001"
+        folder = _make_uuid_folder(tmp_path, uuid)
+        cat = categorize_folder(folder)
+        categories = {c: [] for c in Category}
+        categories[Category.A_JSONL] = [cat]
+        existing = ["CaptainCodeAU-My-Project"]
+
+        plan = compute_move_plan(categories, tmp_path, existing)
+        assert len(plan) == 1
+        assert plan[0].target_project == "CaptainCodeAU-My-Project"
+        assert plan[0].duplicate_status == ""
+        assert plan[0].is_new_project is False
+
+    def test_new_project_detected(self, tmp_path):
+        uuid = "aaaaaaaa-0000-0000-0000-000000000001"
+        _make_uuid_folder(
+            tmp_path, uuid, cwd="/Users/testuser/CODE/CaptainCodeAU/brand_new"
+        )
+        cat = categorize_folder(tmp_path / uuid)
+        categories = {c: [] for c in Category}
+        categories[Category.A_JSONL] = [cat]
+
+        plan = compute_move_plan(categories, tmp_path, [])
+        assert plan[0].is_new_project is True
+
+    def test_duplicate_skip(self, tmp_path):
+        uuid = "aaaaaaaa-0000-0000-0000-000000000001"
+        folder = _make_uuid_folder(tmp_path, uuid)
+        proj = tmp_path / "CaptainCodeAU-My-Project"
+        proj.mkdir()
+        organized = proj / uuid
+        organized.mkdir()
+        (organized / f"{uuid}.jsonl").write_text((folder / f"{uuid}.jsonl").read_text())
+        cat = categorize_folder(folder)
+        categories = {c: [] for c in Category}
+        categories[Category.A_JSONL] = [cat]
+
+        plan = compute_move_plan(categories, tmp_path, ["CaptainCodeAU-My-Project"])
+        assert plan[0].duplicate_status == "skip"
+
+    def test_duplicate_replace(self, tmp_path):
+        uuid = "aaaaaaaa-0000-0000-0000-000000000001"
+        folder = _make_uuid_folder(tmp_path, uuid)
+        (folder / f"{uuid}.jsonl").write_text(
+            '{"type":"user","cwd":"/Users/testuser/CODE/CaptainCodeAU/My_Project","message":{}}\n'
+            * 10
+        )
+        proj = tmp_path / "CaptainCodeAU-My-Project"
+        proj.mkdir()
+        organized = proj / uuid
+        organized.mkdir()
+        (organized / f"{uuid}.jsonl").write_text(
+            '{"type":"user","cwd":"/Users/testuser/CODE/CaptainCodeAU/My_Project","message":{}}\n'
+        )
+        cat = categorize_folder(folder)
+        categories = {c: [] for c in Category}
+        categories[Category.A_JSONL] = [cat]
+
+        plan = compute_move_plan(categories, tmp_path, ["CaptainCodeAU-My-Project"])
+        assert plan[0].duplicate_status == "replace"
+        assert plan[0].duplicate_reason != ""
+
+    def test_html_folder_resolved(self, tmp_path):
+        uuid = "bbbbbbbb-0000-0000-0000-000000000002"
+        folder = tmp_path / uuid
+        folder.mkdir()
+        (folder / "index.html").write_text(
+            "<div>Read /Users/testuser/CODE/CaptainCodeAU/My_Project/file.py</div>"
+        )
+        cat = categorize_folder(folder)
+        categories = {c: [] for c in Category}
+        categories[Category.B_HTML_ONLY] = [cat]
+
+        plan = compute_move_plan(categories, tmp_path, ["CaptainCodeAU-My-Project"])
+        assert len(plan) == 1
+        assert plan[0].target_project == "CaptainCodeAU-My-Project"
+        assert plan[0].category_label == "HTML"
+
+    def test_unknown_cwd(self, tmp_path):
+        uuid = "aaaaaaaa-0000-0000-0000-000000000001"
+        folder = tmp_path / uuid
+        folder.mkdir()
+        (folder / f"{uuid}.jsonl").write_text(
+            '{"type":"queue-operation","action":"start"}\n'
+        )
+        cat = categorize_folder(folder)
+        categories = {c: [] for c in Category}
+        categories[Category.A_JSONL] = [cat]
+
+        plan = compute_move_plan(categories, tmp_path, [])
+        assert plan[0].is_unknown is True
+        assert plan[0].target_project == UNKNOWN_PROJECT
+
+    def test_two_folders_same_new_project_only_first_is_new(self, tmp_path):
+        for i in range(2):
+            uuid = f"aaaaaaaa-0000-0000-0000-00000000000{i+1}"
+            _make_uuid_folder(
+                tmp_path, uuid, cwd="/Users/testuser/CODE/CaptainCodeAU/brand_new"
+            )
+        cats = {c: [] for c in Category}
+        for i in range(2):
+            uuid = f"aaaaaaaa-0000-0000-0000-00000000000{i+1}"
+            cats[Category.A_JSONL].append(categorize_folder(tmp_path / uuid))
+
+        plan = compute_move_plan(cats, tmp_path, [])
+        new_flags = [p.is_new_project for p in plan]
+        assert new_flags[0] is True
+        assert new_flags[1] is False
+
+
+class TestFormatMovePlan:
+    def test_includes_uuid_and_project(self):
+        plan = [
+            PlannedMove(
+                uuid="aaaaaaaa-0000-0000-0000-000000000001",
+                source=Path("/tmp/aaa"),
+                target_project="MyProject",
+                is_new_project=False,
+                duplicate_status="",
+                duplicate_reason="",
+                is_unknown=False,
+                category_label="JSONL",
+            ),
+        ]
+        output = format_move_plan(plan)
+        assert "aaaaaaaa-0000-0000-0000-000000000001" in output
+        assert "MyProject" in output
+        assert "MOVE" in output
+
+    def test_shows_move_group_with_new_tag(self):
+        plan = [
+            PlannedMove(
+                uuid="aaa",
+                source=Path("/tmp/aaa"),
+                target_project="NewProj",
+                is_new_project=True,
+                duplicate_status="",
+                duplicate_reason="",
+                is_unknown=False,
+                category_label="JSONL",
+            ),
+        ]
+        output = format_move_plan(plan)
+        assert "MOVE" in output
+        assert "new project" in output
+
+    def test_shows_replace_group_with_delta(self, tmp_path):
+        folder = tmp_path / "aaa"
+        folder.mkdir()
+        (folder / "aaa.jsonl").write_text("x" * 200)
+        plan = [
+            PlannedMove(
+                uuid="aaa",
+                source=folder,
+                target_project="Proj",
+                is_new_project=False,
+                duplicate_status="replace",
+                duplicate_reason="incoming 200 B vs existing 100 B",
+                is_unknown=False,
+                category_label="JSONL",
+                size_delta=100,
+            ),
+        ]
+        output = format_move_plan(plan)
+        assert "REPLACE" in output
+        assert "+100 B" in output
+
+    def test_groups_skip_duplicates(self):
+        plan = [
+            PlannedMove(
+                uuid="aaa",
+                source=Path("/tmp/aaa"),
+                target_project="Proj",
+                is_new_project=False,
+                duplicate_status="skip",
+                duplicate_reason="identical",
+                is_unknown=False,
+                category_label="JSONL",
+            ),
+        ]
+        output = format_move_plan(plan)
+        assert "ALREADY ORGANIZED" in output
+        assert "aaa" in output
+
+    def test_empty_plan_returns_empty(self):
+        assert format_move_plan([]) == ""
+
+    def test_shows_unknown_group(self):
+        plan = [
+            PlannedMove(
+                uuid="aaa",
+                source=Path("/tmp/aaa"),
+                target_project="unknown-project",
+                is_new_project=True,
+                duplicate_status="",
+                duplicate_reason="",
+                is_unknown=True,
+                category_label="JSONL",
+            ),
+        ]
+        output = format_move_plan(plan)
+        assert "UNKNOWN" in output
+
+    def test_shows_inline_age(self):
+        plan = [
+            PlannedMove(
+                uuid="aaa",
+                source=Path("/tmp/aaa"),
+                target_project="Proj",
+                is_new_project=True,
+                duplicate_status="",
+                duplicate_reason="",
+                is_unknown=False,
+                category_label="JSONL",
+                source_mtime=time.time() - 3600,
+            ),
+        ]
+        output = format_move_plan(plan)
+        assert "1 hour ago" in output
+        # Age should be on the same line as the UUID, not a separate line
+        for line in output.split("\n"):
+            if "aaa" in line and "Proj" in line:
+                assert "1 hour ago" in line
+                break
+
+    def test_shows_total_line(self, tmp_path):
+        folder = tmp_path / "aaa"
+        folder.mkdir()
+        (folder / "aaa.jsonl").write_text("x" * 500)
+        plan = [
+            PlannedMove(
+                uuid="aaa",
+                source=folder,
+                target_project="Proj",
+                is_new_project=True,
+                duplicate_status="",
+                duplicate_reason="",
+                is_unknown=False,
+                category_label="JSONL",
+            ),
+        ]
+        output = format_move_plan(plan)
+        assert "Total:" in output
+        assert "session" in output
+        assert "incoming" in output
+
+
 # --- Phase 7: Report + main integration ---
 
 
@@ -828,7 +1133,7 @@ class TestMainDryRun:
         main(["--dry-run", "--yes", str(tmp_path)])
 
         captured = capsys.readouterr()
-        assert "Already organized" in captured.out
+        assert "ALREADY ORGANIZED" in captured.out
 
     def test_verbose_dry_run_shows_targets(self, tmp_path, capsys):
         uuid = "aaaaaaaa-0000-0000-0000-000000000001"
@@ -963,7 +1268,7 @@ class TestMainDryRun:
         assert (proj / "index.html").exists()
         assert (tmp_path / "index.html").exists()
 
-    def test_cleanup_deletes_duplicates_and_empties(self, tmp_path, capsys):
+    def test_cleanup_moves_to_delete_folder(self, tmp_path, capsys):
         uuid_dup = "aaaaaaaa-0000-0000-0000-000000000001"
         orphan = _make_uuid_folder(tmp_path, uuid_dup)
         proj = tmp_path / "CaptainCodeAU-My-Project"
@@ -983,8 +1288,10 @@ class TestMainDryRun:
         assert not orphan.exists()
         assert not empty_folder.exists()
         assert organized.exists()
-        captured = capsys.readouterr()
-        assert "Cleaning up" in captured.out
+        delete_dir = tmp_path / "_DELETE"
+        assert delete_dir.exists()
+        assert (delete_dir / uuid_dup).exists()
+        assert (delete_dir / uuid_empty).exists()
 
     def test_cleanup_dry_run_preserves_folders(self, tmp_path, capsys):
         uuid_dup = "aaaaaaaa-0000-0000-0000-000000000001"
@@ -1001,7 +1308,7 @@ class TestMainDryRun:
 
         assert orphan.exists()
         captured = capsys.readouterr()
-        assert "would delete" in captured.out
+        assert "would move" in captured.out.lower()
 
     def test_cleanup_report_shows_counts(self, tmp_path, capsys):
         uuid_dup = "aaaaaaaa-0000-0000-0000-000000000001"
@@ -1017,7 +1324,64 @@ class TestMainDryRun:
         main(["--cleanup", "--no-reindex", "--yes", str(tmp_path)])
 
         captured = capsys.readouterr()
-        assert "Deleted duplicates" in captured.out
+        assert "Duplicates" in captured.out
+
+    def test_move_plan_shown_before_processing(self, tmp_path, capsys):
+        uuid = "aaaaaaaa-0000-0000-0000-000000000001"
+        _make_uuid_folder(tmp_path, uuid)
+        (tmp_path / "CaptainCodeAU-My-Project").mkdir()
+
+        main(["--dry-run", "--yes", str(tmp_path)])
+
+        captured = capsys.readouterr()
+        assert "Move plan" in captured.out
+        assert "CaptainCodeAU-My-Project" in captured.out
+
+    def test_move_plan_shows_new_project_tag(self, tmp_path, capsys):
+        uuid = "aaaaaaaa-0000-0000-0000-000000000001"
+        _make_uuid_folder(
+            tmp_path, uuid, cwd="/Users/testuser/CODE/CaptainCodeAU/brand_new"
+        )
+
+        main(["--dry-run", "--yes", str(tmp_path)])
+
+        captured = capsys.readouterr()
+        assert "new project" in captured.out
+
+    def test_move_plan_shows_duplicate_skip(self, tmp_path, capsys):
+        uuid = "aaaaaaaa-0000-0000-0000-000000000001"
+        folder = _make_uuid_folder(tmp_path, uuid)
+        proj = tmp_path / "CaptainCodeAU-My-Project"
+        proj.mkdir()
+        organized = proj / uuid
+        organized.mkdir()
+        (organized / f"{uuid}.jsonl").write_text((folder / f"{uuid}.jsonl").read_text())
+
+        main(["--dry-run", "--yes", str(tmp_path)])
+
+        captured = capsys.readouterr()
+        assert "ALREADY ORGANIZED" in captured.out
+        assert uuid in captured.out
+
+    def test_move_plan_shows_replace(self, tmp_path, capsys):
+        uuid = "aaaaaaaa-0000-0000-0000-000000000001"
+        folder = _make_uuid_folder(tmp_path, uuid)
+        (folder / f"{uuid}.jsonl").write_text(
+            '{"type":"user","cwd":"/Users/testuser/CODE/CaptainCodeAU/My_Project","message":{}}\n'
+            * 10
+        )
+        proj = tmp_path / "CaptainCodeAU-My-Project"
+        proj.mkdir()
+        organized = proj / uuid
+        organized.mkdir()
+        (organized / f"{uuid}.jsonl").write_text(
+            '{"type":"user","cwd":"/Users/testuser/CODE/CaptainCodeAU/My_Project","message":{}}\n'
+        )
+
+        main(["--dry-run", "--yes", str(tmp_path)])
+
+        captured = capsys.readouterr()
+        assert "REPLACE" in captured.out
 
     @patch("reconcile_sessions.subprocess")
     def test_no_reindex_skips_index_rebuild(self, mock_subprocess, tmp_path, capsys):
@@ -1036,3 +1400,105 @@ class TestMainDryRun:
 
         assert not (proj / "index.html").exists()
         assert not (tmp_path / "index.html").exists()
+
+    def test_dry_run_skips_reindex(self, tmp_path, capsys):
+        proj = tmp_path / "MyProject"
+        proj.mkdir()
+        session = proj / "aaaaaaaa-0000-0000-0000-000000000001"
+        session.mkdir()
+        (session / "aaaaaaaa-0000-0000-0000-000000000001.jsonl").write_text(
+            '{"type":"user","cwd":"/test","message":{"content":"hello"}}\n'
+        )
+        _make_uuid_folder(tmp_path, "bbbbbbbb-0000-0000-0000-000000000002")
+
+        main(["--dry-run", "--yes", str(tmp_path)])
+
+        captured = capsys.readouterr()
+        assert "skipped (dry run)" in captured.out
+        assert not (tmp_path / "index.html").exists()
+
+
+class TestMoveToDeleteFolder:
+    def test_moves_to_delete_dir(self, tmp_path):
+        source = tmp_path / "aaaaaaaa-0000-0000-0000-000000000001"
+        source.mkdir()
+        (source / "test.txt").write_text("hello")
+
+        result = move_to_delete_folder(source, tmp_path)
+
+        assert not source.exists()
+        assert result.parent.name == "_DELETE"
+        assert (tmp_path / "_DELETE" / source.name / "test.txt").exists()
+
+    def test_creates_delete_dir(self, tmp_path):
+        source = tmp_path / "aaaaaaaa-0000-0000-0000-000000000001"
+        source.mkdir()
+
+        move_to_delete_folder(source, tmp_path)
+
+        assert (tmp_path / "_DELETE").exists()
+
+    def test_collision_appends_suffix(self, tmp_path):
+        (tmp_path / "_DELETE").mkdir()
+        existing = tmp_path / "_DELETE" / "aaa"
+        existing.mkdir()
+
+        source = tmp_path / "aaa"
+        source.mkdir()
+        (source / "file.txt").write_text("new")
+
+        result = move_to_delete_folder(source, tmp_path)
+
+        assert result.name == "aaa-1"
+        assert (tmp_path / "_DELETE" / "aaa-1" / "file.txt").exists()
+
+    def test_multiple_collisions(self, tmp_path):
+        (tmp_path / "_DELETE").mkdir()
+        (tmp_path / "_DELETE" / "aaa").mkdir()
+        (tmp_path / "_DELETE" / "aaa-1").mkdir()
+
+        source = tmp_path / "aaa"
+        source.mkdir()
+
+        result = move_to_delete_folder(source, tmp_path)
+
+        assert result.name == "aaa-2"
+
+
+class TestFormatDeletePlan:
+    def test_shows_duplicates(self):
+        paths = [Path("/archive/aaa"), Path("/archive/bbb")]
+        output = format_delete_plan(paths, [])
+        assert "DUPLICATES" in output
+        assert "aaa" in output
+        assert "bbb" in output
+
+    def test_shows_empties(self):
+        paths = [Path("/archive/ccc")]
+        output = format_delete_plan([], paths)
+        assert "EMPTY" in output
+        assert "ccc" in output
+
+    def test_empty_lists_returns_empty(self):
+        assert format_delete_plan([], []) == ""
+
+    def test_shows_both(self):
+        output = format_delete_plan([Path("/archive/dup")], [Path("/archive/empty")])
+        assert "DUPLICATES" in output
+        assert "EMPTY" in output
+
+    def test_shows_duplicate_reasons(self):
+        paths = [Path("/archive/aaa")]
+        reasons = {"aaa": "both 512 B"}
+        output = format_delete_plan(paths, [], reasons)
+        assert "both 512 B" in output
+
+
+class TestScanArchiveSkipsUnderscore:
+    def test_skips_delete_folder(self, tmp_path):
+        (tmp_path / "_DELETE").mkdir()
+        (tmp_path / "RealProject").mkdir()
+        result = scan_archive_for_projects(tmp_path)
+        names = [p["name"] for p in result]
+        assert "_DELETE" not in names
+        assert "RealProject" in names
