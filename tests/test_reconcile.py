@@ -1130,6 +1130,160 @@ class TestFormatMovePlan:
         assert "Add to projects" in output
         assert "session" in output
 
+    def test_shows_destinations_for_moves(self):
+        plan = [
+            PlannedMove(
+                uuid="aaa",
+                source=Path("/tmp/aaa"),
+                target_project="ProjA",
+                is_new_project=False,
+                duplicate_status="",
+                duplicate_reason="",
+                is_unknown=False,
+                category_label="JSONL",
+                source_mtime=time.time() - 3600,
+            ),
+            PlannedMove(
+                uuid="bbb",
+                source=Path("/tmp/bbb"),
+                target_project="ProjA",
+                is_new_project=False,
+                duplicate_status="",
+                duplicate_reason="",
+                is_unknown=False,
+                category_label="JSONL",
+                source_mtime=time.time() - 7200,
+            ),
+            PlannedMove(
+                uuid="ccc",
+                source=Path("/tmp/ccc"),
+                target_project="ProjB",
+                is_new_project=True,
+                duplicate_status="",
+                duplicate_reason="",
+                is_unknown=False,
+                category_label="JSONL",
+                source_mtime=time.time() - 1800,
+            ),
+        ]
+        output = format_move_plan(plan)
+        assert "Destinations:" in output
+        assert "ProjA" in output
+        assert "ProjB" in output
+        assert "2 sessions" in output
+        assert "1 session" in output
+
+    def test_shows_destinations_for_replaces(self, tmp_path):
+        folder_a = tmp_path / "aaa"
+        folder_a.mkdir()
+        (folder_a / "aaa.jsonl").write_text("x" * 200)
+        folder_b = tmp_path / "bbb"
+        folder_b.mkdir()
+        (folder_b / "bbb.jsonl").write_text("x" * 300)
+        plan = [
+            PlannedMove(
+                uuid="aaa",
+                source=folder_a,
+                target_project="ProjX",
+                is_new_project=False,
+                duplicate_status="replace",
+                duplicate_reason="incoming larger",
+                is_unknown=False,
+                category_label="JSONL",
+                size_delta=50,
+                source_mtime=time.time() - 3600,
+            ),
+            PlannedMove(
+                uuid="bbb",
+                source=folder_b,
+                target_project="ProjX",
+                is_new_project=False,
+                duplicate_status="replace",
+                duplicate_reason="incoming larger",
+                is_unknown=False,
+                category_label="JSONL",
+                size_delta=100,
+                source_mtime=time.time() - 7200,
+            ),
+        ]
+        output = format_move_plan(plan)
+        assert "Destinations:" in output
+        assert "ProjX" in output
+        assert "2 sessions" in output
+
+    def test_destinations_sorted_by_recent_activity(self):
+        now = time.time()
+        plan = [
+            PlannedMove(
+                uuid="aaa",
+                source=Path("/tmp/aaa"),
+                target_project="OlderProject",
+                is_new_project=False,
+                duplicate_status="",
+                duplicate_reason="",
+                is_unknown=False,
+                category_label="JSONL",
+                source_mtime=now - 86400,
+            ),
+            PlannedMove(
+                uuid="bbb",
+                source=Path("/tmp/bbb"),
+                target_project="NewerProject",
+                is_new_project=False,
+                duplicate_status="",
+                duplicate_reason="",
+                is_unknown=False,
+                category_label="JSONL",
+                source_mtime=now - 3600,
+            ),
+        ]
+        output = format_move_plan(plan)
+        lines = output.split("\n")
+        dest_lines = [l for l in lines if "Project" in l and "session" in l]
+        assert len(dest_lines) == 2
+        assert dest_lines[0].index("NewerProject") < len(dest_lines[0])
+        assert "NewerProject" in dest_lines[0]
+        assert "OlderProject" in dest_lines[1]
+
+    def test_destinations_shows_new_tag(self):
+        plan = [
+            PlannedMove(
+                uuid="aaa",
+                source=Path("/tmp/aaa"),
+                target_project="BrandNew",
+                is_new_project=True,
+                duplicate_status="",
+                duplicate_reason="",
+                is_unknown=False,
+                category_label="JSONL",
+                source_mtime=time.time() - 3600,
+            ),
+        ]
+        output = format_move_plan(plan)
+        assert "Destinations:" in output
+        lines = output.split("\n")
+        dest_line = [l for l in lines if "BrandNew" in l and "session" in l][0]
+        assert "new" in dest_line
+
+    def test_destinations_shown_for_single_project(self):
+        plan = [
+            PlannedMove(
+                uuid="aaa",
+                source=Path("/tmp/aaa"),
+                target_project="OnlyProject",
+                is_new_project=False,
+                duplicate_status="",
+                duplicate_reason="",
+                is_unknown=False,
+                category_label="JSONL",
+                source_mtime=time.time() - 3600,
+            ),
+        ]
+        output = format_move_plan(plan)
+        assert "Destinations:" in output
+        assert "OnlyProject" in output
+        assert "1 session" in output
+
 
 # --- Phase 7: Report + main integration ---
 
@@ -1175,6 +1329,39 @@ class TestFormatReport:
         report = ReconciliationReport(elapsed_seconds=42.3)
         output = format_report(report)
         assert "42.3" in output
+
+    def test_hides_zero_count_lines(self):
+        report = ReconciliationReport(
+            moved_jsonl=20,
+            already_organized=7,
+        )
+        output = format_report(report)
+        assert "Moved (with JSONL)" in output
+        assert "Already organized" in output
+        assert "HTML only" not in output
+        assert "unknown" not in output.lower()
+        assert "Replaced" not in output
+        assert "empty" not in output.lower()
+        assert "Failed" not in output
+
+    def test_shows_all_nonzero_lines(self):
+        report = ReconciliationReport(
+            moved_jsonl=5,
+            moved_html=2,
+            moved_unknown=1,
+            replaced=3,
+            already_organized=10,
+            skipped_empty=1,
+            failed=1,
+        )
+        output = format_report(report)
+        assert "Moved (with JSONL)" in output
+        assert "HTML only" in output
+        assert "unknown" in output.lower()
+        assert "Replaced" in output
+        assert "Already organized" in output
+        assert "empty" in output.lower()
+        assert "Failed" in output
 
 
 class TestMainDryRun:

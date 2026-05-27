@@ -756,16 +756,21 @@ def format_report(report: ReconciliationReport) -> str:
         f"{BOLD}=== RECONCILIATION REPORT ==={RESET}",
         "",
         f"  Processed: {CYAN}{total}{RESET} session folders",
-        f"    Moved (with JSONL):    {GREEN}{report.moved_jsonl:>4}{RESET}",
-        f"    Moved (HTML only):     {GREEN}{report.moved_html:>4}{RESET}",
-        f"    Moved (unknown):       {YELLOW}{report.moved_unknown:>4}{RESET}",
-        f"    Replaced (newer):      {YELLOW}{report.replaced:>4}{RESET}",
-        f"    Already organized:     {DIM}{report.already_organized:>4}{RESET}",
-        f"    Skipped (empty):       {DIM}{report.skipped_empty:>4}{RESET}",
-        f"    Failed:                {RED}{report.failed:>4}{RESET}",
-        "",
-        f"  Projects affected: {CYAN}{len(report.projects_affected)}{RESET}",
     ]
+    breakdown = [
+        (report.moved_jsonl, "Moved (with JSONL):", GREEN),
+        (report.moved_html, "Moved (HTML only):", GREEN),
+        (report.moved_unknown, "Moved (unknown):", YELLOW),
+        (report.replaced, "Replaced (newer):", YELLOW),
+        (report.already_organized, "Already organized:", DIM),
+        (report.skipped_empty, "Skipped (empty):", DIM),
+        (report.failed, "Failed:", RED),
+    ]
+    for count, label, color in breakdown:
+        if count > 0:
+            lines.append(f"    {label:<24}{color}{count:>4}{RESET}")
+    lines.append("")
+    lines.append(f"  Projects affected: {CYAN}{len(report.projects_affected)}{RESET}")
     if report.new_projects:
         lines.append(
             f"    New projects created: {GREEN}{len(report.new_projects)}{RESET}"
@@ -973,6 +978,32 @@ def format_move_plan(plan: list[PlannedMove]) -> str:
 
     lines = [f"{BOLD}Move plan:{RESET}", ""]
 
+    def _format_destinations(entries: list[PlannedMove]) -> None:
+        projects: dict[str, dict] = {}
+        for p in entries:
+            if p.target_project not in projects:
+                projects[p.target_project] = {
+                    "count": 0,
+                    "max_mtime": 0.0,
+                    "is_new": False,
+                }
+            info = projects[p.target_project]
+            info["count"] += 1
+            if p.source_mtime > info["max_mtime"]:
+                info["max_mtime"] = p.source_mtime
+            if p.is_new_project:
+                info["is_new"] = True
+        sorted_projects = sorted(
+            projects.items(), key=lambda kv: kv[1]["max_mtime"], reverse=True
+        )
+        lines.append(f"  {DIM}Destinations:{RESET}")
+        for name, info in sorted_projects:
+            new_tag = f", {MAGENTA}new{RESET}" if info["is_new"] else ""
+            lines.append(
+                f"    {BOLD}{name}{RESET}  ({_plural(info['count'], 'session')}{new_tag})"
+            )
+        lines.append("")
+
     def _format_entry(
         p: PlannedMove, show_delta: bool = False, show_new_tag: bool = False
     ) -> None:
@@ -1017,12 +1048,14 @@ def format_move_plan(plan: list[PlannedMove]) -> str:
         lines.append(
             f"{BOLD}{YELLOW}Replace {CYAN}{len(replaces)}{RESET}{BOLD}{YELLOW} session{'s' if len(replaces) != 1 else ''} in project folders?{RESET} {DIM}(old copies backed up to _DELETE){RESET}"
         )
+        _format_destinations(replaces)
         _format_group(replaces, show_delta=True)
 
     if moves:
         lines.append(
             f"{BOLD}{GREEN}Move {CYAN}{len(moves)}{RESET}{BOLD}{GREEN} session{'s' if len(moves) != 1 else ''} to project folders?{RESET}"
         )
+        _format_destinations(moves)
         _format_group(moves, show_new_tag=True)
 
     if unknowns:
