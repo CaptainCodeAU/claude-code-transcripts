@@ -436,31 +436,29 @@ class TestRelativeAge:
         assert _relative_age(time.time()) == "just now"
 
     def test_minutes(self):
-        assert _relative_age(time.time() - 120) == "2 mins ago"
+        assert _relative_age(time.time() - 120) == "2 m ago"
 
-    def test_hours_compound(self):
-        assert _relative_age(time.time() - 7200) == "2 hours ago"
-        assert _relative_age(time.time() - 5400) == "1 hour, 30 mins ago"
+    def test_hours(self):
+        assert _relative_age(time.time() - 7200) == "2 h ago"
+        assert _relative_age(time.time() - 5400) == "1 h, 30 m ago"
 
-    def test_days_compound(self):
-        assert _relative_age(time.time() - 259200) == "3 days ago"
-        assert _relative_age(time.time() - 90000) == "1 day, 1 hour ago"
-        assert _relative_age(time.time() - 91800) == "1 day, 1 hour, 30 mins ago"
+    def test_days(self):
+        assert _relative_age(time.time() - 259200) == "3 d ago"
+        assert _relative_age(time.time() - 91800) == "1 d, 1 h, 30 m ago"
 
-    def test_weeks_compound(self):
-        assert _relative_age(time.time() - 1209600) == "2 weeks ago"
-        assert _relative_age(time.time() - 777600) == "1 week, 2 days ago"
-        assert _relative_age(time.time() - 820800) == "1 week, 2 days, 12 hours ago"
+    def test_weeks(self):
+        assert _relative_age(time.time() - 1209600) == "2 w ago"
+        assert _relative_age(time.time() - 820800) == "1 w, 2 d, 12 h ago"
 
-    def test_months_compound(self):
-        assert _relative_age(time.time() - 2592000) == "1 month ago"
-        assert _relative_age(time.time() - 2851200) == "1 month, 3 days ago"
-        assert _relative_age(time.time() - 2894400) == "1 month, 3 days, 12 hours ago"
+    def test_months(self):
+        assert _relative_age(time.time() - 2592000) == "1 M ago"
+        assert _relative_age(time.time() - 2894400) == "1 M, 3 d, 12 h ago"
 
-    def test_singular(self):
-        assert _relative_age(time.time() - 3600) == "1 hour ago"
-        assert _relative_age(time.time() - 86400) == "1 day ago"
-        assert _relative_age(time.time() - 604800) == "1 week ago"
+    def test_four_levels_max(self):
+        assert _relative_age(time.time() - 2895000) == "1 M, 3 d, 12 h, 10 m ago"
+        # Verify it caps at 4 parts
+        parts = _relative_age(time.time() - 34128060).replace(" ago", "").split(", ")
+        assert len(parts) <= 4
 
 
 # --- Phase 5: Duplicate comparison + Processing ---
@@ -1066,11 +1064,11 @@ class TestFormatMovePlan:
             ),
         ]
         output = format_move_plan(plan)
-        assert "1 hour ago" in output
+        assert "1 h ago" in output
         # Age should be on the same line as the UUID, not a separate line
         for line in output.split("\n"):
             if "aaa" in line and "Proj" in line:
-                assert "1 hour ago" in line
+                assert "1 h ago" in line
                 break
 
     def test_shows_total_line(self, tmp_path):
