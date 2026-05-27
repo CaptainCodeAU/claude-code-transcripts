@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -79,6 +80,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Show detailed error output on failures.",
     )
+    parser.add_argument(
+        "--fix-mtimes",
+        action="store_true",
+        help="Correct file modification times across the entire archive to match JSONL session timestamps.",
+    )
     return parser.parse_args(argv)
 
 
@@ -101,6 +107,20 @@ def extract_last_timestamp(jsonl_path: Path) -> float:
     except (FileNotFoundError, OSError):
         pass
     return last_ts
+
+
+def fix_session_mtime(session_dir: Path) -> float | None:
+    jsonl = _find_jsonl_in_dir(session_dir)
+    if not jsonl or not jsonl.exists():
+        return None
+    ts = extract_last_timestamp(jsonl)
+    if not ts:
+        return None
+    for item in session_dir.iterdir():
+        if item.is_file():
+            os.utime(str(item), (ts, ts))
+    os.utime(str(session_dir), (ts, ts))
+    return ts
 
 
 def extract_cwd_from_jsonl(jsonl_path: Path) -> str | None:
@@ -1343,6 +1363,10 @@ def main(argv: list[str] | None = None) -> None:
                         verbose=args.verbose,
                     )
                 _tally_result(result, report, is_jsonl_category=is_jsonl)
+                if result.success and not args.dry_run:
+                    moved_dir = archive_path / result.target_project / result.uuid
+                    if moved_dir.exists():
+                        fix_session_mtime(moved_dir)
 
         def _move_to_delete(
             paths: list[Path], label: str, subfolder: str = "duplicates"
@@ -1491,6 +1515,39 @@ def main(argv: list[str] | None = None) -> None:
         print(f"\n  Reindex: {YELLOW}skipped (dry run){RESET}")
     elif not args.no_reindex and not archive_changed:
         print(f"\n  Reindex: {YELLOW}skipped (no changes){RESET}")
+
+    # Bulk mtime correction
+    if args.fix_mtimes and not args.dry_run:
+        print(f"\n{BOLD}Correcting file modification times...{RESET}")
+        projects = scan_archive_for_projects(archive_path)
+        fixed = 0
+        scanned = 0
+        for project in projects:
+            project_dir = archive_path / project["name"]
+            for session_dir in project_dir.iterdir():
+                if not session_dir.is_dir():
+                    continue
+                scanned += 1
+                ts = fix_session_mtime(session_dir)
+                if ts:
+                    fixed += 1
+        # Also check _UNKNOWN
+        unknown_dir = archive_path / UNKNOWN_PROJECT
+        if unknown_dir.exists():
+            for session_dir in unknown_dir.iterdir():
+                if not session_dir.is_dir():
+                    continue
+                scanned += 1
+                ts = fix_session_mtime(session_dir)
+                if ts:
+                    fixed += 1
+        print(
+            f"  Scanned {CYAN}{scanned}{RESET} sessions, corrected {GREEN}{fixed}{RESET}"
+        )
+    elif args.fix_mtimes and args.dry_run:
+        print(
+            f"\n  {YELLOW}--fix-mtimes with --dry-run: would scan and correct mtimes{RESET}"
+        )
 
     report.elapsed_seconds = time.monotonic() - start_time
     print(format_report(report))

@@ -22,6 +22,7 @@ from reconcile_sessions import (
     _relative_age,
     categorize_all,
     extract_last_timestamp,
+    fix_session_mtime,
     categorize_folder,
     compare_session_copies,
     compute_move_plan,
@@ -78,6 +79,10 @@ class TestParseArgs:
     def test_cleanup_flag(self):
         args = parse_args(["--cleanup", "/some/path"])
         assert args.cleanup is True
+
+    def test_fix_mtimes_flag(self):
+        args = parse_args(["--fix-mtimes", "/some/path"])
+        assert args.fix_mtimes is True
 
     def test_no_path_exits(self):
         with pytest.raises(SystemExit):
@@ -231,6 +236,39 @@ class TestExtractLastTimestamp:
 
     def test_missing_file_returns_zero(self, tmp_path):
         assert extract_last_timestamp(tmp_path / "missing.jsonl") == 0.0
+
+
+class TestFixSessionMtime:
+    def test_corrects_mtime(self, tmp_path):
+        session = tmp_path / "aaaaaaaa-0000-0000-0000-000000000001"
+        session.mkdir()
+        jsonl = session / "aaaaaaaa-0000-0000-0000-000000000001.jsonl"
+        jsonl.write_text(
+            '{"type":"user","timestamp":"2026-01-15T10:30:00.000Z","message":{}}\n'
+        )
+        (session / "index.html").write_text("<html></html>")
+
+        ts = fix_session_mtime(session)
+
+        assert ts is not None
+        assert abs(jsonl.stat().st_mtime - ts) < 1
+        assert abs(session.stat().st_mtime - ts) < 1
+        assert abs((session / "index.html").stat().st_mtime - ts) < 1
+
+    def test_no_timestamp_returns_none(self, tmp_path):
+        session = tmp_path / "aaa"
+        session.mkdir()
+        jsonl = session / "aaa.jsonl"
+        jsonl.write_text('{"role":"user","message":{}}\n')
+
+        assert fix_session_mtime(session) is None
+
+    def test_no_jsonl_returns_none(self, tmp_path):
+        session = tmp_path / "aaa"
+        session.mkdir()
+        (session / "index.html").write_text("<html></html>")
+
+        assert fix_session_mtime(session) is None
 
 
 class TestCwdToProjectName:
