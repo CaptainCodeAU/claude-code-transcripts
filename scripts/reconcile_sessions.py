@@ -1440,8 +1440,16 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"  {YELLOW}Skipped.{RESET}")
             print()
 
-    # Reindex (skip for dry-run and --no-reindex)
-    if not args.no_reindex and not args.dry_run:
+    # Reindex (skip if dry-run, --no-reindex, or nothing changed)
+    archive_changed = (
+        report.moved_jsonl
+        + report.moved_html
+        + report.moved_unknown
+        + report.replaced
+        + report.cleaned_duplicates
+        + report.cleaned_empty
+    ) > 0
+    if not args.no_reindex and not args.dry_run and archive_changed:
         print(f"\n{BOLD}Rebuilding indexes...{RESET}")
         try:
             changes = reindex_archive(archive_path)
@@ -1481,6 +1489,8 @@ def main(argv: list[str] | None = None) -> None:
             print(f"{RED}Reindex failed: {e}{RESET}", file=sys.stderr)
     elif args.dry_run and not args.no_reindex:
         print(f"\n  Reindex: {YELLOW}skipped (dry run){RESET}")
+    elif not args.no_reindex and not archive_changed:
+        print(f"\n  Reindex: {YELLOW}skipped (no changes){RESET}")
 
     report.elapsed_seconds = time.monotonic() - start_time
     print(format_report(report))

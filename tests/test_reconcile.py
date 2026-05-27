@@ -1268,7 +1268,7 @@ class TestMainDryRun:
             main(["--no-reindex", "--yes", str(tmp_path)])
         assert exc_info.value.code == 0
 
-    def test_no_orphans_still_reindexes_by_default(self, tmp_path, capsys):
+    def test_no_orphans_skips_reindex(self, tmp_path, capsys):
         proj = tmp_path / "SomeProject"
         proj.mkdir()
         session = proj / "aaaaaaaa-0000-0000-0000-000000000001"
@@ -1280,18 +1280,19 @@ class TestMainDryRun:
         main(["--yes", str(tmp_path)])
 
         captured = capsys.readouterr()
-        assert "Rebuilding indexes" in captured.out
-        assert (tmp_path / "index.html").exists()
+        assert "no changes" in captured.out.lower()
 
     @patch("reconcile_sessions.subprocess")
-    def test_reindex_runs_by_default(self, mock_subprocess, tmp_path, capsys):
+    def test_reindex_runs_when_files_moved(self, mock_subprocess, tmp_path, capsys):
+        mock_subprocess.run.return_value = type(
+            "R", (), {"returncode": 0, "stderr": ""}
+        )()
         proj = tmp_path / "MyProject"
         proj.mkdir()
-        session = proj / "aaaaaaaa-0000-0000-0000-000000000001"
-        session.mkdir()
-        jsonl = session / "aaaaaaaa-0000-0000-0000-000000000001.jsonl"
-        jsonl.write_text(
-            '{"type":"user","cwd":"/test","message":{"content":"hello"}}\n'
+        _make_uuid_folder(
+            tmp_path,
+            "aaaaaaaa-0000-0000-0000-000000000001",
+            cwd="/Users/testuser/CODE/MyProject",
         )
 
         main(["--yes", str(tmp_path)])
