@@ -1379,7 +1379,8 @@ def main(argv: list[str] | None = None) -> None:
             for p in paths:
                 try:
                     if p.exists():
-                        move_to_delete_folder(p, archive_path, subfolder=subfolder)
+                        dest = move_to_delete_folder(p, archive_path, subfolder=subfolder)
+                        fix_session_mtime(dest)
                         if p in report.duplicate_paths:
                             report.cleaned_duplicates += 1
                         else:
