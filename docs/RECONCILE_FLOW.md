@@ -117,7 +117,7 @@ ASCII flowcharts showing the decision logic in `scripts/reconcile_sessions.py`.
    ┌─────┴──────┐
    v            v
  Derive      Target =
- project     "unknown-project"
+ project     "_UNKNOWN"
  name           |
    |            |
    v            |
@@ -228,7 +228,7 @@ Declining one skips it and continues to the next.
            │no                     yes│
            │              ┌───────────┴──────────┐
            │              │"Move N to            │
-           │              │ unknown-project?"    │
+           │              │ _UNKNOWN?"    │
            │              └───────────┬──────────┘
            │                   ┌─────┴────┐
            │                   │ yes   no │
@@ -359,8 +359,8 @@ Declining one skips it and continues to the next.
  ├──────────────────────┼──────────────────────────────────────────────┤
  │ [SKIP - UNKNOWN]     │ No cwd extractable from JSONL/HTML           │
  │                      │ Shows: age                                   │
- │                      │ Action: move to unknown-project/             │
- │                      │ Prompt: "Move N to unknown-project?"         │
+ │                      │ Action: move to _UNKNOWN/             │
+ │                      │ Prompt: "Move N to _UNKNOWN?"         │
  ├──────────────────────┼──────────────────────────────────────────────┤
  │ [SKIP - ALREADY      │ Target dir exists, organized copy is same    │
  │  ORGANIZED]          │ size or larger                               │
