@@ -26,10 +26,13 @@ UUID_PATTERN = re.compile(
 )
 
 BOLD = "\033[1m"
+DIM = "\033[2m"
 CYAN = "\033[36m"
 YELLOW = "\033[33m"
 RED = "\033[31m"
 GREEN = "\033[32m"
+BLUE = "\033[34m"
+MAGENTA = "\033[35m"
 RESET = "\033[0m"
 
 
@@ -965,11 +968,13 @@ def format_move_plan(plan: list[PlannedMove]) -> str:
             delta_str = f"  ({YELLOW}-{_human_size(abs(p.size_delta))}{RESET})"
         age_str = ""
         if p.source_mtime:
-            age_str = f"  ({_relative_age(p.source_mtime)})"
+            age_str = f"  {DIM}({_relative_age(p.source_mtime)}){RESET}"
         new_tag = ""
         if show_new_tag and p.is_new_project:
-            new_tag = f"  {GREEN}(new project){RESET}"
-        lines.append(f"  {p.uuid} → {p.target_project}{delta_str}{age_str}{new_tag}")
+            new_tag = f"  {MAGENTA}(new project){RESET}"
+        lines.append(
+            f"  {DIM}{p.uuid}{RESET} → {BOLD}{p.target_project}{RESET}{delta_str}{age_str}{new_tag}"
+        )
 
     def _format_group(
         entries: list[PlannedMove],
@@ -981,14 +986,16 @@ def format_move_plan(plan: list[PlannedMove]) -> str:
         remaining = len(entries) - len(shown)
         for p in shown:
             if compact:
-                age_str = (
-                    f"  ({_relative_age(p.source_mtime)})" if p.source_mtime else ""
+                age_str = ""
+                if p.source_mtime:
+                    age_str = f"  {DIM}({_relative_age(p.source_mtime)}){RESET}"
+                lines.append(
+                    f"  {DIM}{p.uuid}{RESET} → {BOLD}{p.target_project}{RESET}{age_str}"
                 )
-                lines.append(f"  {p.uuid} → {p.target_project}{age_str}")
             else:
                 _format_entry(p, show_delta=show_delta, show_new_tag=show_new_tag)
         if remaining > 0:
-            lines.append(f"  ... and {CYAN}{remaining}{RESET} more")
+            lines.append(f"  {DIM}... and {CYAN}{remaining}{RESET}{DIM} more{RESET}")
         lines.append("")
 
     if replaces:
@@ -999,7 +1006,7 @@ def format_move_plan(plan: list[PlannedMove]) -> str:
 
     if moves:
         lines.append(
-            f"{BOLD}[{GREEN}MOVE{RESET}{BOLD}]{RESET} ({CYAN}{len(moves)}{RESET})"
+            f"{BOLD}[{BLUE}MOVE{RESET}{BOLD}]{RESET} ({CYAN}{len(moves)}{RESET})"
         )
         _format_group(moves, show_new_tag=True)
 
@@ -1095,9 +1102,11 @@ def format_delete_plan(
                     age_str = f"  ({_relative_age(jsonl.stat().st_mtime)})"
                 except OSError:
                     pass
-            lines.append(f"  {p.name}{reason_str}{age_str}")
+            lines.append(f"  {DIM}{p.name}{RESET}{reason_str}{age_str}")
         if len(sorted_dups) > 15:
-            lines.append(f"  ... and {CYAN}{len(sorted_dups) - 15}{RESET} more")
+            lines.append(
+                f"  {DIM}... and {CYAN}{len(sorted_dups) - 15}{RESET}{DIM} more{RESET}"
+            )
         lines.append("")
 
     if empty_paths:
@@ -1106,7 +1115,7 @@ def format_delete_plan(
         )
         sorted_empty = sorted(empty_paths, key=lambda p: p.name)
         for p in sorted_empty[:15]:
-            lines.append(f"  {p.name}")
+            lines.append(f"  {DIM}{p.name}{RESET}")
         if len(sorted_empty) > 15:
             lines.append(f"  ... and {CYAN}{len(sorted_empty) - 15}{RESET} more")
         lines.append("")
@@ -1159,8 +1168,8 @@ def print_archive_summary(archive_path: Path) -> None:
     projects = scan_archive_for_projects(archive_path)
     total_sessions = sum(len(p["sessions"]) for p in projects)
     print(f"{BOLD}Archive:{RESET} {archive_path}")
-    print(f"  Projects: {CYAN}{len(projects)}{RESET}")
-    print(f"  Sessions: {CYAN}{total_sessions:,}{RESET}")
+    print(f"Projects: {CYAN}{len(projects)}{RESET}")
+    print(f"Sessions: {CYAN}{total_sessions:,}{RESET}")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -1194,9 +1203,11 @@ def main(argv: list[str] | None = None) -> None:
             f"\n{BOLD}Found {CYAN}{len(uuid_folders)}{RESET}{BOLD} orphan UUID folders:{RESET}"
         )
         for folder in uuid_folders[:15]:
-            print(f"    {folder.name}")
+            print(f"    {DIM}{folder.name}{RESET}")
         if len(uuid_folders) > 15:
-            print(f"    ... and {CYAN}{len(uuid_folders) - 15}{RESET} more")
+            print(
+                f"    {DIM}... and {CYAN}{len(uuid_folders) - 15}{RESET}{DIM} more{RESET}"
+            )
         print()
 
         categories = categorize_all(uuid_folders)
@@ -1315,6 +1326,7 @@ def main(argv: list[str] | None = None) -> None:
                 print(
                     f"  {YELLOW}Skipped: {len(replaces)} session{'s' if len(replaces) != 1 else ''} not replaced.{RESET}"
                 )
+            print()
 
         if moves:
             if confirm(
@@ -1326,6 +1338,7 @@ def main(argv: list[str] | None = None) -> None:
                 print(
                     f"  {YELLOW}Skipped: {len(moves)} session{'s' if len(moves) != 1 else ''} not moved.{RESET}"
                 )
+            print()
 
         if unknowns:
             if confirm(
@@ -1337,6 +1350,7 @@ def main(argv: list[str] | None = None) -> None:
                 print(
                     f"  {YELLOW}Skipped: {len(unknowns)} unknown session{'s' if len(unknowns) != 1 else ''} not moved.{RESET}"
                 )
+            print()
 
         if skips:
             # Tally for report regardless of user choice
@@ -1360,6 +1374,7 @@ def main(argv: list[str] | None = None) -> None:
                 print(
                     f"  {YELLOW}Skipped: {len(skips)} duplicate{'s' if len(skips) != 1 else ''} left in place.{RESET}"
                 )
+            print()
 
         if empties:
             if confirm(
@@ -1371,6 +1386,7 @@ def main(argv: list[str] | None = None) -> None:
                 print(
                     f"  {YELLOW}Skipped: {len(empties)} empty folder{'s' if len(empties) != 1 else ''} left in place.{RESET}"
                 )
+            print()
 
         if others:
             if confirm(
@@ -1383,6 +1399,7 @@ def main(argv: list[str] | None = None) -> None:
                 print(
                     f"  {YELLOW}Skipped: {len(others)} unrecognized folder{'s' if len(others) != 1 else ''} left in place.{RESET}"
                 )
+            print()
 
     # Reindex (skip for dry-run and --no-reindex)
     if not args.no_reindex and not args.dry_run:
