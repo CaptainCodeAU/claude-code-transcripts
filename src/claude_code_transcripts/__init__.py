@@ -228,22 +228,18 @@ def get_project_display_name(folder_name):
 
     # Find the first meaningful part (after skipping username and common dirs)
     meaningful_parts = []
-    found_project = False
 
     for i, part in enumerate(parts):
         if not part:
             continue
-        # Skip the first part if it looks like a username (before common dirs)
-        if i == 0 and not found_project:
-            # Check if next parts contain common dirs
-            remaining = [p.lower() for p in parts[i + 1 :]]
-            if any(d in remaining for d in skip_dirs):
+        if not meaningful_parts:
+            if i == 0:
+                remaining = [p.lower() for p in parts[i + 1 :]]
+                if any(d in remaining for d in skip_dirs):
+                    continue
+            if part.lower() in skip_dirs:
                 continue
-        if part.lower() in skip_dirs:
-            found_project = True
-            continue
         meaningful_parts.append(part)
-        found_project = True
 
     if meaningful_parts:
         return "-".join(meaningful_parts)

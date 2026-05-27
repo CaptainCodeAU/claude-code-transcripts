@@ -87,6 +87,20 @@ class TestGetProjectDisplayName:
         """Test handling already simple names."""
         assert get_project_display_name("simple-project") == "simple-project"
 
+    def test_preserves_skip_dirs_word_in_project_name(self):
+        assert (
+            get_project_display_name(
+                "-Users-testuser-CODE-CaptainCodeAU-claude-code-transcripts"
+            )
+            == "CaptainCodeAU-claude-code-transcripts"
+        )
+
+    def test_still_strips_skip_dirs_as_directory(self):
+        assert get_project_display_name("-home-user-code-myproject") == "myproject"
+
+    def test_multiple_skip_dirs_in_path(self):
+        assert get_project_display_name("-home-user-code-src-myproject") == "myproject"
+
 
 class TestFindAllSessions:
     """Tests for find_all_sessions function."""
