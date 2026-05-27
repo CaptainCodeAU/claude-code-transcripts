@@ -254,27 +254,50 @@ def _human_size(size_bytes: int) -> str:
     return f"{size:.1f} TB"
 
 
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}{'s' if n != 1 else ''}"
+
+
 def _relative_age(mtime: float) -> str:
     delta = int(time.time() - mtime)
     if delta < 60:
         return "just now"
     if delta < 3600:
-        m = delta // 60
-        return f"{m} min{'s' if m != 1 else ''} ago"
+        return f"{_plural(delta // 60, 'min')} ago"
     if delta < 86400:
         h = delta // 3600
-        return f"{h} hour{'s' if h != 1 else ''} ago"
+        m = (delta % 3600) // 60
+        parts = [_plural(h, "hour")]
+        if m:
+            parts.append(_plural(m, "min"))
+        return f"{', '.join(parts)} ago"
     if delta < 604800:
         d = delta // 86400
-        return f"{d} day{'s' if d != 1 else ''} ago"
+        h = (delta % 86400) // 3600
+        parts = [_plural(d, "day")]
+        if h:
+            parts.append(_plural(h, "hour"))
+        return f"{', '.join(parts)} ago"
     if delta < 2592000:
         w = delta // 604800
-        return f"{w} week{'s' if w != 1 else ''} ago"
+        d = (delta % 604800) // 86400
+        parts = [_plural(w, "week")]
+        if d:
+            parts.append(_plural(d, "day"))
+        return f"{', '.join(parts)} ago"
     if delta < 31536000:
         mo = delta // 2592000
-        return f"{mo} month{'s' if mo != 1 else ''} ago"
+        d = (delta % 2592000) // 86400
+        parts = [_plural(mo, "month")]
+        if d:
+            parts.append(_plural(d, "day"))
+        return f"{', '.join(parts)} ago"
     y = delta // 31536000
-    return f"{y} year{'s' if y != 1 else ''} ago"
+    mo = (delta % 31536000) // 2592000
+    parts = [_plural(y, "year")]
+    if mo:
+        parts.append(_plural(mo, "month"))
+    return f"{', '.join(parts)} ago"
 
 
 def compare_session_copies(orphan_dir: Path, organized_dir: Path) -> tuple[str, str]:
@@ -665,7 +688,7 @@ class PlannedMove:
 
 
 CATEGORY_LABELS = {
-    Category.A_JSONL: "Full session (JSONL + HTML)",
+    Category.A_JSONL: "Session data (JSONL)",
     Category.B_HTML_ONLY: "HTML transcript only",
     Category.C_EMPTY: "Empty (nothing inside)",
     Category.D_OTHER: "Unrecognized files",
@@ -1137,6 +1160,8 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     print()
+    if args.dry_run:
+        print(f"{YELLOW}{BOLD}DRY RUN - no changes will be made{RESET}\n")
     print_archive_summary(archive_path)
 
     uuid_folders = find_uuid_folders(archive_path)
@@ -1156,10 +1181,10 @@ def main(argv: list[str] | None = None) -> None:
         print(
             f"\n{BOLD}Found {CYAN}{len(uuid_folders)}{RESET}{BOLD} orphan UUID folders:{RESET}"
         )
-        for folder in uuid_folders[:20]:
+        for folder in uuid_folders[:15]:
             print(f"    {folder.name}")
-        if len(uuid_folders) > 20:
-            print(f"    ... and {CYAN}{len(uuid_folders) - 20}{RESET} more")
+        if len(uuid_folders) > 15:
+            print(f"    ... and {CYAN}{len(uuid_folders) - 15}{RESET} more")
         print()
 
         categories = categorize_all(uuid_folders)
@@ -1215,9 +1240,6 @@ def main(argv: list[str] | None = None) -> None:
             if len(others) > 15:
                 print(f"  ... and {CYAN}{len(others) - 15}{RESET} more")
             print()
-
-        if args.dry_run:
-            print(f"{YELLOW}{BOLD}DRY RUN - no changes will be made{RESET}\n")
 
         # Build lookup: uuid -> (CategorizedFolder, is_jsonl)
         folder_lookup: dict[str, tuple[CategorizedFolder, bool]] = {}
