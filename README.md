@@ -239,14 +239,15 @@ uv run python scripts/reconcile_sessions.py ~/CODE/my-claude-code-transcripts/
 uv run python scripts/reconcile_sessions.py --yes ~/CODE/my-claude-code-transcripts/
 ```
 
-The script shows a grouped move plan before prompting for each action:
+The script shows a move plan with action-verb headings, then prompts for each group:
 
-- **[REPLACE]** -- orphan has a larger JSONL than the existing copy (old copy backed up to `_DELETE/`)
-- **[MOVE]** -- new sessions for existing or new projects
-- **[SKIP - ALREADY ORGANIZED]** -- duplicate orphans (prompted to move to `_DELETE/`)
-- **[EMPTY]** / **[UNRECOGNIZED]** -- prompted to move to `_DELETE/`
+- **Replace N sessions?** -- orphan has a larger JSONL than the existing copy (old copy backed up to `_DELETE/replaced/`)
+- **Move N sessions?** -- new sessions for existing or new projects
+- **Move N to _UNKNOWN?** -- sessions that can't be matched to any project
+- **Move N duplicates to _DELETE?** -- duplicate orphans sent to `_DELETE/duplicates/`
+- **Move N empty/unrecognized to _DELETE?** -- empty or non-session folders
 
-Each group has its own confirmation prompt. Declining one skips it and continues to the next. Sessions that can't be matched to any project go to `_UNKNOWN/`. Nothing is permanently deleted; unwanted folders are soft-deleted to a `_DELETE/` directory in the archive root.
+Each group has its own confirmation prompt. Declining one skips it and continues to the next. Nothing is permanently deleted; unwanted folders are soft-deleted to `_DELETE/` subdirectories. Session ages are derived from JSONL internal timestamps, not file modification dates. Reindexing only runs when the archive actually changed.
 
 See [`docs/CLI.md#reconcile`](docs/CLI.md#reconcile) for the full flag reference and [`docs/RECONCILE_FLOW.md`](docs/RECONCILE_FLOW.md) for decision flowcharts.
 

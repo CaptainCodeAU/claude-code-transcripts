@@ -254,12 +254,12 @@ Positional argument:
 1. **Scan** the archive root for UUID-named directories (orphans).
 2. **Categorize** each orphan: has JSONL, HTML only, empty, or unrecognized files.
 3. **Derive project** from JSONL `cwd` field or HTML file path references. Sessions that can't be matched go to `_UNKNOWN/`.
-4. **Compare duplicates** when the target already exists: compares JSONL file sizes (larger = more complete, since JSONL is append-only). If the orphan is larger, it replaces the organized copy (old copy backed up to `_DELETE/`). If sizes match, the orphan is marked as already organized.
-5. **Show move plan** grouped by action: `[REPLACE]`, `[MOVE]`, `[SKIP - ALREADY ORGANIZED]`, `[SKIP - UNKNOWN PROJECT]`, `[EMPTY]`, `[UNRECOGNIZED]`. Each entry shows the target project, size delta (for replacements), and relative age.
+4. **Compare duplicates** when the target already exists: compares JSONL file sizes (larger = more complete, since JSONL is append-only). If the orphan is larger, it replaces the organized copy (old copy backed up to `_DELETE/replaced/`). If sizes match, the orphan is marked as already organized.
+5. **Show move plan** with action-verb headings ("Replace N sessions?", "Move N sessions?", "Move N duplicates to _DELETE?"). Each entry shows the target project, size delta (for replacements), and relative age derived from JSONL internal timestamps. A summary shows per-destination totals.
 6. **Prompt per group**: each group has its own confirmation. Declining one skips it and continues to the next. Duplicate orphans, empty folders, and unrecognized folders are prompted for soft-delete to `_DELETE/`.
-7. **Rebuild indexes** (unless `--no-reindex` or `--dry-run`): scans the archive and regenerates all project and master `index.html` pages. Only indexes that actually changed are reported, with size deltas.
+7. **Rebuild indexes** (only if the archive changed): scans the archive and regenerates project and master `index.html` pages. Skipped if `--dry-run`, `--no-reindex`, or no files were moved/replaced/deleted. Only indexes that actually changed are reported, with size deltas.
 
-Nothing is permanently deleted. Unwanted folders are moved to a `_DELETE/` directory in the archive root. If a name collision occurs in `_DELETE/`, a suffix (`-1`, `-2`, etc.) is appended.
+Nothing is permanently deleted. Unwanted folders are moved to `_DELETE/` subdirectories (`duplicates/`, `empty/`, `unrecognized/`, `replaced/`). If a name collision occurs, a suffix (`-1`, `-2`, etc.) is appended.
 
 ### Examples
 

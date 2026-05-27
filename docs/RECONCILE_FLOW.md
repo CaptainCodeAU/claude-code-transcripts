@@ -9,6 +9,11 @@ ASCII flowcharts showing the decision logic in `scripts/reconcile_sessions.py`.
    |
    v
  ┌─────────────────────────┐
+ │  Show DRY RUN banner     │
+ │  (if --dry-run)          │
+ └────────────┬─────────────┘
+              v
+ ┌─────────────────────────┐
  │  Scan archive            │
  │  - Count projects        │
  │  - Count sessions        │
@@ -29,16 +34,16 @@ ASCII flowcharts showing the decision logic in `scripts/reconcile_sessions.py`.
      |            ┌──────────────────┐
      |            │ Compute move plan │
      |            │ (resolve targets, │
-     |            │  detect dupes)    │
+     |            │  detect dupes,    │
+     |            │  extract session  │
+     |            │  timestamps)      │
      |            └────────┬─────────┘
      |                     v
      |            ┌──────────────────┐
      |            │ Display:          │
      |            │  - Category table │
      |            │  - Move plan      │
-     |            │  - EMPTY group    │
-     |            │  - UNRECOGNIZED   │
-     |            │  - DRY RUN banner │
+     |            │  - Summary        │
      |            └────────┬─────────┘
      |                     v
      |            ┌──────────────────┐
@@ -48,18 +53,22 @@ ASCII flowcharts showing the decision logic in `scripts/reconcile_sessions.py`.
      |                     |
      └──────────┬──────────┘
                 v
-          ┌─────┴──────┐
-          │ --dry-run?  │
-          └─────┬──────┘
-           yes  |   no
-      ┌─────────┴──────────┐
-      v                    v
-  "Reindex:           ┌─────────────┐
-   skipped            │ Rebuild all  │
-   (dry run)"         │ index.html   │
-      |               └──────┬──────┘
-      └──────────┬───────────┘
-                 v
+       ┌────────┴─────────┐
+       │ Archive changed?  │
+       │ (any files moved, │
+       │  replaced, or     │
+       │  deleted)          │
+       └────────┬──────────┘
+          no    |    yes
+     ┌──────────┴──────────┐
+     v                     v
+  "Reindex:           ┌────────────────┐
+   skipped            │ Rebuild project │
+   (no changes)"      │ + master index  │
+     |                │ (show deltas)   │
+     |                └───────┬────────┘
+     └──────────┬─────────────┘
+                v
          ┌───────────────┐
          │ Print report   │
          └───────────────┘
@@ -94,9 +103,9 @@ ASCII flowcharts showing the decision logic in `scripts/reconcile_sessions.py`.
    v         v      v           v
  ┌─────┐ ┌─────┐ ┌──────┐ ┌────────────┐
  │Move │ │Move │ │Shown │ │Shown in    │
- │plan │ │plan │ │in    │ │[UNRECOG-   │
- │entry│ │entry│ │[EMPTY│ │NIZED]      │
- │     │ │     │ │]group│ │group       │
+ │plan │ │plan │ │in    │ │UNRECOGNIZED│
+ │entry│ │entry│ │EMPTY │ │group       │
+ │     │ │     │ │group │ │            │
  └─────┘ └─────┘ └──────┘ └────────────┘
 ```
 
@@ -169,17 +178,19 @@ ASCII flowcharts showing the decision logic in `scripts/reconcile_sessions.py`.
                        |           |
                        v           v
                   Prompted to move
-                  to _DELETE
+                  orphan to
+                  _DELETE/duplicates/
 ```
 
 ## 4. Per-Group Confirmation Flow
 
-Every group shown in the move plan gets its own confirmation prompt.
+Each group heading in the move plan IS the action question.
 Declining one skips it and continues to the next.
 
 ```
   ┌───────────────────────────────────────────┐
-  │ Full move plan displayed (all groups)      │
+  │ Move plan displayed with all groups        │
+  │ (headings are the action questions)        │
   └─────────────────────┬─────────────────────┘
                         v
                 ┌───────┴────────┐
@@ -190,17 +201,19 @@ Declining one skips it and continues to the next.
            │              ┌──────────┴──────────┐
            │              │ "Replace N sessions? │
            │              │ (old copies backed   │
-           │              │ up to _DELETE)"       │
+           │              │ up to _DELETE/        │
+           │              │ replaced/)"           │
            │              └──────────┬───────────┘
            │                   ┌────┴────┐
            │                   │ yes  no │
            │                   └────┬────┘
            │                ┌──────┴──────┐
            │                v             v
-           │            Process      "Skipped:
-           │            replaces      N not
-           │            (backup old   replaced"
-           │            to _DELETE)       |
+           │            Process      "Skipped."
+           │            replaces
+           │            (backup old
+           │            to _DELETE/
+           │            replaced/)
            └───────┬────────┴─────────────┘
                    v
                 ┌──┴─────────┐
@@ -217,8 +230,7 @@ Declining one skips it and continues to the next.
            │                └────┬────┘
            │             ┌──────┴──────┐
            │             v             v
-           │         Process      "Skipped"
-           │             |             |
+           │         Process      "Skipped."
            └───────┬─────┴─────────────┘
                    v
                 ┌──┴──────────────┐
@@ -227,37 +239,32 @@ Declining one skips it and continues to the next.
            │    └─────────────────┘    │
            │no                     yes│
            │              ┌───────────┴──────────┐
-           │              │"Move N to            │
-           │              │ _UNKNOWN?"    │
+           │              │"Move N to _UNKNOWN?" │
            │              └───────────┬──────────┘
            │                   ┌─────┴────┐
            │                   │ yes   no │
            │                   └─────┬────┘
            │                ┌────────┴──────┐
            │                v               v
-           │            Process        "Skipped"
-           │                |               |
+           │            Process        "Skipped."
            └───────┬────────┴───────────────┘
                    v
                 ┌──┴──────────────────┐
-           ┌────┤ ALREADY ORGANIZED   ├────┐
-           │    │ (duplicates)        │    │
+           ┌────┤ DUPLICATES          ├────┐
            │    │ non-empty?          │    │
            │    └─────────────────────┘    │
            │no                         yes│
            │              ┌───────────────┴───────┐
-           │              │"Move N duplicate      │
-           │              │ orphans to _DELETE?"   │
+           │              │"Move N duplicates     │
+           │              │ to _DELETE?"           │
            │              └───────────────┬───────┘
            │                   ┌──────────┴────┐
            │                   │ yes        no │
            │                   └──────┬────────┘
            │                ┌─────────┴────────┐
            │                v                  v
-           │         Move orphans to      "Skipped:
-           │         _DELETE/              left in
-           │                |              place"
-           │                |                  |
+           │         Move to _DELETE/     "Skipped."
+           │         duplicates/
            └───────┬────────┴──────────────────┘
                    v
                 ┌──┴──────────────────┐
@@ -274,8 +281,8 @@ Declining one skips it and continues to the next.
            │                   └──────┬────────┘
            │                ┌─────────┴────────┐
            │                v                  v
-           │         Move to _DELETE/     "Skipped"
-           │                |                  |
+           │         Move to _DELETE/     "Skipped."
+           │         empty/
            └───────┬────────┴──────────────────┘
                    v
                 ┌──┴──────────────────┐
@@ -292,97 +299,74 @@ Declining one skips it and continues to the next.
            │                   └──────┬────────┘
            │                ┌─────────┴────────┐
            │                v                  v
-           │         Move to _DELETE/     "Skipped"
-           │                |                  |
+           │         Move to _DELETE/     "Skipped."
+           │         unrecognized/
            └───────┬────────┴──────────────────┘
                    v
               Continue to
               reindex step
+              (only if archive changed)
 ```
 
-## 5. Soft-Delete (_DELETE) Mechanics
+## 5. Soft-Delete (_DELETE) Structure
 
 ```
-  Folder to soft-delete
-         |
-         v
-  ┌──────────────────┐
-  │ _DELETE/ dir      │
-  │ exists?           │
-  └──────┬───────────┘
-    no   |   yes
-   ┌─────┴──────┐
-   v            |
- Create         |
- _DELETE/       |
-   |            |
-   └─────┬──────┘
-         v
-  ┌──────────────────┐
-  │ _DELETE/<name>    │
-  │ exists?           │
-  └──────┬───────────┘
-    no   |   yes
-   ┌─────┴──────────┐
-   v                v
- Move to         ┌────────────────┐
- _DELETE/<name>  │ Try <name>-1   │
-   |             │ Then <name>-2  │
-   |             │ Then <name>-3  │
-   |             │ ... until free │
-   |             └────────┬──────┘
-   |                      v
-   |              Move to
-   |              _DELETE/<name>-N
-   |                      |
-   └──────────┬───────────┘
-              v
-         Return final
-         destination path
+  _DELETE/
+  ├── duplicates/      orphan copies where organized version was kept
+  ├── empty/           empty orphan folders
+  ├── unrecognized/    orphan folders with non-session files
+  └── replaced/        old organized copies overwritten by newer orphans
+
+  Collision handling:
+  ┌──────────────────────────────────────┐
+  │ _DELETE/<subfolder>/<name> exists?   │
+  └──────────┬───────────────────────────┘
+        no   |   yes
+  ┌──────────┴──────────┐
+  v                     v
+  Move to            Try <name>-1
+  _DELETE/            Then <name>-2
+  <subfolder>/        ... until free
+  <name>
 ```
 
 ## 6. Group Assignment Summary
 
 ```
- ┌──────────────────────┬──────────────────────────────────────────────┐
- │ Group                │ Condition                                    │
- ├──────────────────────┼──────────────────────────────────────────────┤
- │ [REPLACE]            │ Target dir exists, orphan JSONL is larger    │
- │                      │ Shows: +delta, age                           │
- │                      │ Action: backup old to _DELETE, move orphan   │
- │                      │ Prompt: "Replace N sessions?"                │
- ├──────────────────────┼──────────────────────────────────────────────┤
- │ [MOVE]               │ Target dir does NOT exist                    │
- │                      │ Shows: age, (new project) tag if applicable  │
- │                      │ Action: move orphan into project dir         │
- │                      │ Prompt: "Move N sessions?"                   │
- ├──────────────────────┼──────────────────────────────────────────────┤
- │ [SKIP - UNKNOWN]     │ No cwd extractable from JSONL/HTML           │
- │                      │ Shows: age                                   │
- │                      │ Action: move to _UNKNOWN/             │
- │                      │ Prompt: "Move N to _UNKNOWN?"         │
- ├──────────────────────┼──────────────────────────────────────────────┤
- │ [SKIP - ALREADY      │ Target dir exists, organized copy is same    │
- │  ORGANIZED]          │ size or larger                               │
- │                      │ Shows: age                                   │
- │                      │ Action: move orphan to _DELETE               │
- │                      │ Prompt: "Move N duplicate orphans to         │
- │                      │  _DELETE?"                                   │
- ├──────────────────────┼──────────────────────────────────────────────┤
- │ [EMPTY]              │ Orphan folder contains no files              │
- │                      │ Action: move to _DELETE                      │
- │                      │ Prompt: "Move N empty folders to _DELETE?"   │
- ├──────────────────────┼──────────────────────────────────────────────┤
- │ [UNRECOGNIZED]       │ Orphan folder has files but no .jsonl/.html  │
- │                      │ Action: move to _DELETE                      │
- │                      │ Prompt: "Move N unrecognized folders to      │
- │                      │  _DELETE?"                                   │
- └──────────────────────┴──────────────────────────────────────────────┘
+ ┌──────────────────────┬──────────────────────────────────────────────────┐
+ │ Group                │ Condition + Action                               │
+ ├──────────────────────┼──────────────────────────────────────────────────┤
+ │ Replace N sessions?  │ Target dir exists, orphan JSONL is larger        │
+ │                      │ Shows: +delta, age (from JSONL timestamp)        │
+ │                      │ Old copy -> _DELETE/replaced/                    │
+ │                      │ Orphan -> project dir                            │
+ ├──────────────────────┼──────────────────────────────────────────────────┤
+ │ Move N sessions?     │ Target dir does NOT exist                        │
+ │                      │ Shows: age, (new project) tag if applicable      │
+ │                      │ Orphan -> project dir                            │
+ ├──────────────────────┼──────────────────────────────────────────────────┤
+ │ Move N to _UNKNOWN?  │ No cwd extractable from JSONL/HTML              │
+ │                      │ Shows: age                                       │
+ │                      │ Orphan -> _UNKNOWN/                              │
+ ├──────────────────────┼──────────────────────────────────────────────────┤
+ │ Move N duplicates    │ Target dir exists, organized copy is same        │
+ │ to _DELETE?          │ size or larger                                   │
+ │                      │ Shows: age                                       │
+ │                      │ Orphan -> _DELETE/duplicates/                    │
+ ├──────────────────────┼──────────────────────────────────────────────────┤
+ │ Move N empty folders │ Orphan folder contains no files                  │
+ │ to _DELETE?          │ Orphan -> _DELETE/empty/                         │
+ ├──────────────────────┼──────────────────────────────────────────────────┤
+ │ Move N unrecognized  │ Orphan folder has files but no .jsonl/.html      │
+ │ folders to _DELETE?  │ Orphan -> _DELETE/unrecognized/                  │
+ └──────────────────────┴──────────────────────────────────────────────────┘
 
  Notes:
- - Nothing is permanently deleted; all removals go to _DELETE/
- - REPLACE backs up the OLD organized copy to _DELETE before overwriting
+ - Nothing is permanently deleted; all removals go to _DELETE/<subfolder>/
+ - REPLACE backs up the OLD organized copy to _DELETE/replaced/
+ - Ages derived from JSONL internal timestamps (falls back to file mtime)
  - --dry-run skips all actions and reindexing
  - --yes auto-confirms all prompts
+ - Reindex only runs when the archive actually changed
  - Groups with zero entries are not shown and not prompted
 ```
