@@ -123,6 +123,23 @@ def fix_session_mtime(session_dir: Path) -> float | None:
     return ts
 
 
+def fix_project_mtime(project_dir: Path) -> float | None:
+    max_ts = 0.0
+    for entry in project_dir.iterdir():
+        if not entry.is_dir():
+            continue
+        jsonl = _find_jsonl_in_dir(entry)
+        if not jsonl or not jsonl.exists():
+            continue
+        ts = extract_last_timestamp(jsonl)
+        if ts > max_ts:
+            max_ts = ts
+    if max_ts == 0.0:
+        return None
+    os.utime(str(project_dir), (max_ts, max_ts))
+    return max_ts
+
+
 def extract_cwd_from_jsonl(jsonl_path: Path) -> str | None:
     try:
         with open(jsonl_path, "r", encoding="utf-8") as f:
@@ -1500,6 +1517,13 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"  {YELLOW}Skipped.{RESET}")
             print()
 
+    # Fix project folder mtimes for affected projects
+    if not args.dry_run and report.projects_affected:
+        for project_name in report.projects_affected:
+            project_dir = archive_path / project_name
+            if project_dir.exists():
+                fix_project_mtime(project_dir)
+
     # Reindex (skip if dry-run, --no-reindex, or nothing changed)
     archive_changed = (
         report.moved_jsonl
@@ -1573,6 +1597,11 @@ def main(argv: list[str] | None = None) -> None:
                 ts = fix_session_mtime(session_dir)
                 if ts:
                     fixed += 1
+        for project in projects:
+            project_dir = archive_path / project["name"]
+            fix_project_mtime(project_dir)
+        if unknown_dir.exists():
+            fix_project_mtime(unknown_dir)
         print(
             f"  Scanned {CYAN}{scanned}{RESET} sessions, corrected {GREEN}{fixed}{RESET}"
         )

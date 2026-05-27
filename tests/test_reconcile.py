@@ -22,6 +22,7 @@ from reconcile_sessions import (
     _relative_age,
     categorize_all,
     extract_last_timestamp,
+    fix_project_mtime,
     fix_session_mtime,
     categorize_folder,
     compare_session_copies,
@@ -269,6 +270,68 @@ class TestFixSessionMtime:
         (session / "index.html").write_text("<html></html>")
 
         assert fix_session_mtime(session) is None
+
+
+class TestFixProjectMtime:
+    def test_sets_project_mtime_to_newest_session(self, tmp_path):
+        project = tmp_path / "MyProject"
+        project.mkdir()
+        older = project / "session-old"
+        older.mkdir()
+        (older / "session-old.jsonl").write_text(
+            '{"type":"user","timestamp":"2026-01-10T10:00:00.000Z","message":{}}\n'
+        )
+        newer = project / "session-new"
+        newer.mkdir()
+        (newer / "session-new.jsonl").write_text(
+            '{"type":"user","timestamp":"2026-01-15T10:00:00.000Z","message":{}}\n'
+        )
+
+        ts = fix_project_mtime(project)
+
+        assert ts is not None
+        newer_ts = extract_last_timestamp(newer / "session-new.jsonl")
+        assert abs(ts - newer_ts) < 1
+        assert abs(project.stat().st_mtime - newer_ts) < 1
+
+    def test_ignores_sessions_without_jsonl(self, tmp_path):
+        project = tmp_path / "MyProject"
+        project.mkdir()
+        with_jsonl = project / "session-a"
+        with_jsonl.mkdir()
+        (with_jsonl / "session-a.jsonl").write_text(
+            '{"type":"user","timestamp":"2026-01-15T10:00:00.000Z","message":{}}\n'
+        )
+        empty_session = project / "session-b"
+        empty_session.mkdir()
+
+        ts = fix_project_mtime(project)
+
+        expected_ts = extract_last_timestamp(with_jsonl / "session-a.jsonl")
+        assert ts is not None
+        assert abs(ts - expected_ts) < 1
+
+    def test_returns_none_for_empty_project(self, tmp_path):
+        project = tmp_path / "EmptyProject"
+        project.mkdir()
+
+        assert fix_project_mtime(project) is None
+
+    def test_skips_non_directory_children(self, tmp_path):
+        project = tmp_path / "MyProject"
+        project.mkdir()
+        (project / "index.html").write_text("<html></html>")
+        session = project / "session-a"
+        session.mkdir()
+        (session / "session-a.jsonl").write_text(
+            '{"type":"user","timestamp":"2026-01-15T10:00:00.000Z","message":{}}\n'
+        )
+
+        ts = fix_project_mtime(project)
+
+        expected_ts = extract_last_timestamp(session / "session-a.jsonl")
+        assert ts is not None
+        assert abs(ts - expected_ts) < 1
 
 
 class TestCwdToProjectName:
