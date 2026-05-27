@@ -1067,9 +1067,9 @@ class TestFormatMovePlan:
             ),
         ]
         output = format_move_plan(plan)
-        assert "Total:" in output
+        assert "Summary:" in output
+        assert "Add new" in output
         assert "session" in output
-        assert "incoming" in output
 
 
 # --- Phase 7: Report + main integration ---

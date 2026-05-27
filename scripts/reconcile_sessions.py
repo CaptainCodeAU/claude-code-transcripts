@@ -1022,22 +1022,39 @@ def format_move_plan(plan: list[PlannedMove]) -> str:
         )
         _format_group(skips, compact=True)
 
-    total_count = len([p for p in plan if p.duplicate_status != "skip"])
-    incoming_sizes = []
-    for p in plan:
-        if p.duplicate_status == "skip":
-            continue
-        jsonl = _find_jsonl_in_dir(p.source) if p.source.exists() else None
-        if jsonl and jsonl.exists():
-            try:
-                incoming_sizes.append(jsonl.stat().st_size)
-            except OSError:
-                pass
-    total_incoming = sum(incoming_sizes)
-    if total_count:
-        lines.append(
-            f"{BOLD}Total:{RESET} {CYAN}{total_count}{RESET} session{'s' if total_count != 1 else ''}, {CYAN}{_human_size(total_incoming)}{RESET} incoming"
-        )
+    def _group_size(entries: list[PlannedMove]) -> int:
+        total = 0
+        for p in entries:
+            jsonl = _find_jsonl_in_dir(p.source) if p.source.exists() else None
+            if jsonl and jsonl.exists():
+                try:
+                    total += jsonl.stat().st_size
+                except OSError:
+                    pass
+        return total
+
+    if replaces or moves or unknowns or skips:
+        lines.append(f"{BOLD}Summary:{RESET}")
+        if replaces:
+            size = _group_size(replaces)
+            lines.append(
+                f"  Add as replacement:  {CYAN}{_plural(len(replaces), 'session')}{RESET}  ({GREEN}+{_human_size(size)}{RESET})"
+            )
+        if moves:
+            size = _group_size(moves)
+            lines.append(
+                f"  Add new:             {CYAN}{_plural(len(moves), 'session')}{RESET}  ({BLUE}{_human_size(size)}{RESET})"
+            )
+        if unknowns:
+            size = _group_size(unknowns)
+            lines.append(
+                f"  To _UNKNOWN:         {CYAN}{_plural(len(unknowns), 'session')}{RESET}  ({YELLOW}{_human_size(size)}{RESET})"
+            )
+        if skips:
+            size = _group_size(skips)
+            lines.append(
+                f"  To _DELETE:          {CYAN}{_plural(len(skips), 'duplicate')}{RESET}  ({RED}{_human_size(size)}{RESET})"
+            )
         lines.append("")
 
     return "\n".join(lines)
