@@ -1127,7 +1127,7 @@ class TestFormatMovePlan:
         ]
         output = format_move_plan(plan)
         assert "Summary:" in output
-        assert "Add new" in output
+        assert "Add to projects" in output
         assert "session" in output
 
 

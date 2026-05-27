@@ -759,9 +759,9 @@ def format_report(report: ReconciliationReport) -> str:
         f"    Moved (with JSONL):    {GREEN}{report.moved_jsonl:>4}{RESET}",
         f"    Moved (HTML only):     {GREEN}{report.moved_html:>4}{RESET}",
         f"    Moved (unknown):       {YELLOW}{report.moved_unknown:>4}{RESET}",
-        f"    Replaced (newer):      {CYAN}{report.replaced:>4}{RESET}",
-        f"    Already organized:     {CYAN}{report.already_organized:>4}{RESET}",
-        f"    Skipped (empty):       {YELLOW}{report.skipped_empty:>4}{RESET}",
+        f"    Replaced (newer):      {YELLOW}{report.replaced:>4}{RESET}",
+        f"    Already organized:     {DIM}{report.already_organized:>4}{RESET}",
+        f"    Skipped (empty):       {DIM}{report.skipped_empty:>4}{RESET}",
         f"    Failed:                {RED}{report.failed:>4}{RESET}",
         "",
         f"  Projects affected: {CYAN}{len(report.projects_affected)}{RESET}",
@@ -1015,13 +1015,13 @@ def format_move_plan(plan: list[PlannedMove]) -> str:
 
     if replaces:
         lines.append(
-            f"{BOLD}{YELLOW}Replace {CYAN}{len(replaces)}{RESET}{BOLD}{YELLOW} session{'s' if len(replaces) != 1 else ''}?{RESET} {DIM}(old copies backed up to _DELETE){RESET}"
+            f"{BOLD}{YELLOW}Replace {CYAN}{len(replaces)}{RESET}{BOLD}{YELLOW} session{'s' if len(replaces) != 1 else ''} in project folders?{RESET} {DIM}(old copies backed up to _DELETE){RESET}"
         )
         _format_group(replaces, show_delta=True)
 
     if moves:
         lines.append(
-            f"{BOLD}{BLUE}Move {CYAN}{len(moves)}{RESET}{BOLD}{BLUE} session{'s' if len(moves) != 1 else ''}?{RESET}"
+            f"{BOLD}{GREEN}Move {CYAN}{len(moves)}{RESET}{BOLD}{GREEN} session{'s' if len(moves) != 1 else ''} to project folders?{RESET}"
         )
         _format_group(moves, show_new_tag=True)
 
@@ -1033,7 +1033,7 @@ def format_move_plan(plan: list[PlannedMove]) -> str:
 
     if skips:
         lines.append(
-            f"{BOLD}{CYAN}Move {len(skips)} duplicate{'s' if len(skips) != 1 else ''} to _DELETE?{RESET}"
+            f"{BOLD}{RED}Move {CYAN}{len(skips)}{RESET}{BOLD}{RED} duplicate{'s' if len(skips) != 1 else ''} to _DELETE?{RESET}"
         )
         _format_group(skips, compact=True)
 
@@ -1053,22 +1053,22 @@ def format_move_plan(plan: list[PlannedMove]) -> str:
         if replaces:
             size = _group_size(replaces)
             lines.append(
-                f"  Add as replacement:  {CYAN}{_plural(len(replaces), 'session')}{RESET}  ({GREEN}+{_human_size(size)}{RESET})"
+                f"  {YELLOW}Replace in projects:{RESET}  {_plural(len(replaces), 'session')}  ({YELLOW}{_human_size(size)}{RESET})"
             )
         if moves:
             size = _group_size(moves)
             lines.append(
-                f"  Add new:             {CYAN}{_plural(len(moves), 'session')}{RESET}  ({BLUE}{_human_size(size)}{RESET})"
+                f"  {GREEN}Add to projects:{RESET}     {_plural(len(moves), 'session')}  ({GREEN}{_human_size(size)}{RESET})"
             )
         if unknowns:
             size = _group_size(unknowns)
             lines.append(
-                f"  To _UNKNOWN:         {CYAN}{_plural(len(unknowns), 'session')}{RESET}  ({YELLOW}{_human_size(size)}{RESET})"
+                f"  {YELLOW}To _UNKNOWN:{RESET}         {_plural(len(unknowns), 'session')}  ({YELLOW}{_human_size(size)}{RESET})"
             )
         if skips:
             size = _group_size(skips)
             lines.append(
-                f"  To _DELETE:          {CYAN}{_plural(len(skips), 'duplicate')}{RESET}  ({RED}{_human_size(size)}{RESET})"
+                f"  {RED}To _DELETE:{RESET}          {_plural(len(skips), 'duplicate')}  ({RED}{_human_size(size)}{RESET})"
             )
         lines.append("")
 
@@ -1379,7 +1379,9 @@ def main(argv: list[str] | None = None) -> None:
             for p in paths:
                 try:
                     if p.exists():
-                        dest = move_to_delete_folder(p, archive_path, subfolder=subfolder)
+                        dest = move_to_delete_folder(
+                            p, archive_path, subfolder=subfolder
+                        )
                         fix_session_mtime(dest)
                         if p in report.duplicate_paths:
                             report.cleaned_duplicates += 1
@@ -1401,7 +1403,7 @@ def main(argv: list[str] | None = None) -> None:
 
         if moves:
             if confirm(
-                f"Proceed with moving {len(moves)} session{'s' if len(moves) != 1 else ''}?",
+                f"Proceed with moving {len(moves)} session{'s' if len(moves) != 1 else ''} to project folders?",
                 args.yes,
             ):
                 _process_group(moves)
