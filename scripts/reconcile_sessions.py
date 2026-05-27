@@ -136,6 +136,9 @@ def fix_project_mtime(project_dir: Path) -> float | None:
             max_ts = ts
     if max_ts == 0.0:
         return None
+    index_html = project_dir / "index.html"
+    if index_html.is_file():
+        os.utime(str(index_html), (max_ts, max_ts))
     os.utime(str(project_dir), (max_ts, max_ts))
     return max_ts
 

@@ -332,6 +332,22 @@ class TestFixProjectMtime:
         assert ts is not None
         assert abs(ts - expected_ts) < 1
 
+    def test_sets_index_html_mtime(self, tmp_path):
+        project = tmp_path / "MyProject"
+        project.mkdir()
+        session = project / "session-a"
+        session.mkdir()
+        (session / "session-a.jsonl").write_text(
+            '{"type":"user","timestamp":"2026-01-15T10:00:00.000Z","message":{}}\n'
+        )
+        index = project / "index.html"
+        index.write_text("<html></html>")
+
+        ts = fix_project_mtime(project)
+
+        expected_ts = extract_last_timestamp(session / "session-a.jsonl")
+        assert abs(index.stat().st_mtime - expected_ts) < 1
+
 
 class TestCwdToProjectName:
     def test_standard_path(self):
