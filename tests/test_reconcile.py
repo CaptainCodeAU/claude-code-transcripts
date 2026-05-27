@@ -1017,7 +1017,7 @@ class TestFormatMovePlan:
             PlannedMove(
                 uuid="aaa",
                 source=Path("/tmp/aaa"),
-                target_project="unknown-project",
+                target_project="_UNKNOWN",
                 is_new_project=True,
                 duplicate_status="",
                 duplicate_reason="",

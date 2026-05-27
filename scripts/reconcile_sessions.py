@@ -206,7 +206,7 @@ def extract_project_from_html(html_path: Path) -> str | None:
     return cwd_to_project_name(cwd)
 
 
-UNKNOWN_PROJECT = "unknown-project"
+UNKNOWN_PROJECT = "_UNKNOWN"
 
 
 @dataclass
@@ -1342,7 +1342,7 @@ def main(argv: list[str] | None = None) -> None:
 
         if unknowns:
             if confirm(
-                f"Move {len(unknowns)} session{'s' if len(unknowns) != 1 else ''} to unknown-project?",
+                f"Move {len(unknowns)} session{'s' if len(unknowns) != 1 else ''} to _UNKNOWN?",
                 args.yes,
             ):
                 _process_group(unknowns)
