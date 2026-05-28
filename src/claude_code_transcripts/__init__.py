@@ -8,7 +8,9 @@ import platform
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
+import time
 import webbrowser
 from datetime import datetime
 from pathlib import Path
@@ -34,6 +36,9 @@ from .core.summary import (
     find_local_sessions,
 )
 from .core.archive import find_all_sessions
+from .core.resolve import resolve_project_name
+from .core.idempotency import should_skip
+from . import notify, spawn
 from .core.github import (
     detect_github_repo,
     extract_repo_from_session,
@@ -76,6 +81,10 @@ def get_template(name):
 
 
 PROMPTS_PER_PAGE = 5
+
+# Default archive root for the `hook` capture pipeline.
+# Override with the TRANSCRIPT_EXPORT_DIR environment variable.
+_DEFAULT_EXPORT_DIR = "~/claude-code-transcripts"
 
 
 # Module-level variable for GitHub repo (set by generate_html)
@@ -2265,6 +2274,98 @@ def all_cmd(source, output, include_agents, dry_run, open_browser, quiet, includ
     if open_browser:
         index_url = (output / "index.html").resolve().as_uri()
         webbrowser.open(index_url)
+
+
+@cli.command("render")
+@click.argument("jsonl_file", type=click.Path())
+@click.option(
+    "-o",
+    "--output",
+    required=True,
+    type=click.Path(),
+    help="Session output directory (already created by the hook).",
+)
+@click.option("--repo", help="GitHub repo (owner/name) for commit links.")
+def render_cmd(jsonl_file, output, repo):
+    """Render an already-filed session's HTML (the background hook child)."""
+    output = Path(output)
+    try:
+        generate_html(Path(jsonl_file), output, github_repo=repo)
+    except Exception as e:
+        # Detached child: a failure notification is the only signal that survives.
+        notify.report(
+            output.name, output.parent.name, "error", error=f"render failed: {e}"
+        )
+        raise
+    click.echo(f"Rendered: {output.resolve()}")
+
+
+@cli.command("hook")
+def hook_cmd():
+    """Export a session on SessionEnd (reads the hook JSON payload from stdin).
+
+    Fast capture: resolve the project name (cwd-first), skip if unchanged, file
+    the raw JSONL, notify success, then hand HTML rendering to a detached
+    background child so session shutdown is never blocked.
+    """
+    if os.environ.get("SKIP_SESSION_END_HOOK") == "1":
+        return
+
+    start = time.time()
+    try:
+        payload = json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError):
+        notify.report("", None, "error", "invalid stdin payload")
+        return
+
+    session_id = payload.get("session_id", "")
+    transcript_path = payload.get("transcript_path", "")
+    payload_cwd = payload.get("cwd", "")
+
+    if not transcript_path or not os.path.isfile(transcript_path):
+        notify.report(session_id, None, "error", "transcript file missing")
+        return
+
+    project, source = resolve_project_name(transcript_path, payload_cwd)
+    output_root = os.path.expanduser(
+        os.environ.get("TRANSCRIPT_EXPORT_DIR") or _DEFAULT_EXPORT_DIR
+    )
+    uuid = Path(transcript_path).stem
+    session_dir = os.path.join(output_root, project, uuid)
+
+    if should_skip(transcript_path, session_dir, uuid):
+        elapsed = int((time.time() - start) * 1000)
+        notify.report(
+            session_id,
+            project,
+            "skipped",
+            "already exported (unchanged)",
+            elapsed,
+            source,
+            payload_cwd,
+        )
+        return
+
+    try:
+        os.makedirs(session_dir, exist_ok=True)
+        dest = os.path.join(session_dir, uuid + ".jsonl")
+        shutil.copy(transcript_path, dest)
+    except OSError as e:
+        elapsed = int((time.time() - start) * 1000)
+        notify.report(
+            session_id,
+            project,
+            "error",
+            f"cannot file JSONL: {e}",
+            elapsed,
+            source,
+            payload_cwd,
+        )
+        return
+
+    elapsed = int((time.time() - start) * 1000)
+    notify.report(session_id, project, "ok", "", elapsed, source, payload_cwd)
+    spawn.spawn_render(dest, session_dir)
 
 
 def main():

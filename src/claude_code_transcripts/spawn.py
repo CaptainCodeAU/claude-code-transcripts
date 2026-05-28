@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 
-def spawn_render(jsonl_path, session_dir, *, reindex=True):
+def spawn_render(jsonl_path, session_dir):
     """Start a detached `render` child and return immediately (non-blocking)."""
     cmd = [
         sys.executable,
@@ -20,8 +20,6 @@ def spawn_render(jsonl_path, session_dir, *, reindex=True):
         "-o",
         session_dir,
     ]
-    if not reindex:
-        cmd.append("--no-reindex")
     return subprocess.Popen(
         cmd,
         stdin=subprocess.DEVNULL,

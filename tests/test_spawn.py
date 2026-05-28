@@ -29,12 +29,3 @@ def test_spawn_render_is_detached(monkeypatch):
     assert kwargs["stdout"] == subprocess.DEVNULL
     assert kwargs["stderr"] == subprocess.DEVNULL
     assert kwargs["close_fds"] is True
-
-
-def test_spawn_render_no_reindex(monkeypatch):
-    calls = []
-    monkeypatch.setattr(
-        subprocess, "Popen", lambda args, **kw: calls.append((args, kw))
-    )
-    spawn.spawn_render("/x/abc.jsonl", "/out/abc", reindex=False)
-    assert "--no-reindex" in calls[0][0]
