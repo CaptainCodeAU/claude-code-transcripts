@@ -21,6 +21,19 @@ import markdown
 import questionary
 
 from .core.naming import get_project_display_name
+from .core.jsonl import (
+    extract_text_from_content,
+    parse_session_file,
+    _parse_jsonl_file,
+    is_json_like,
+    is_task_notification,
+)
+from .core.summary import (
+    get_session_summary,
+    _get_jsonl_summary,
+    find_local_sessions,
+)
+from .core.archive import find_all_sessions
 
 # Set up Jinja2 environment
 _jinja_env = Environment(
@@ -64,199 +77,12 @@ LONG_TEXT_THRESHOLD = (
 )
 
 
-def extract_text_from_content(content):
-    """Extract plain text from message content.
-
-    Handles both string content (older format) and array content (newer format).
-
-    Args:
-        content: Either a string or a list of content blocks like
-                 [{"type": "text", "text": "..."}, {"type": "image", ...}]
-
-    Returns:
-        The extracted text as a string, or empty string if no text found.
-    """
-    if isinstance(content, str):
-        return content.strip()
-    elif isinstance(content, list):
-        # Extract text from content blocks of type "text"
-        texts = []
-        for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
-                text = block.get("text", "")
-                if text:
-                    texts.append(text)
-        return " ".join(texts).strip()
-    return ""
-
-
 # Module-level variable for GitHub repo (set by generate_html)
 _github_repo = None
 
 # API constants
 API_BASE_URL = "https://api.anthropic.com/v1"
 ANTHROPIC_VERSION = "2023-06-01"
-
-
-def get_session_summary(filepath, max_length=200):
-    """Extract a human-readable summary from a session file.
-
-    Supports both JSON and JSONL formats.
-    Returns a summary string or "(no summary)" if none found.
-    """
-    filepath = Path(filepath)
-    try:
-        if filepath.suffix == ".jsonl":
-            return _get_jsonl_summary(filepath, max_length)
-        else:
-            # For JSON files, try to get first user message
-            with open(filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            loglines = data.get("loglines", [])
-            for entry in loglines:
-                if entry.get("type") == "user":
-                    msg = entry.get("message", {})
-                    content = msg.get("content", "")
-                    text = extract_text_from_content(content)
-                    if text:
-                        if len(text) > max_length:
-                            return text[: max_length - 3] + "..."
-                        return text
-            return "(no summary)"
-    except Exception:
-        return "(no summary)"
-
-
-def _get_jsonl_summary(filepath, max_length=200):
-    """Extract summary from JSONL file."""
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                    # First priority: summary type entries
-                    if obj.get("type") == "summary" and obj.get("summary"):
-                        summary = obj["summary"]
-                        if len(summary) > max_length:
-                            return summary[: max_length - 3] + "..."
-                        return summary
-                except json.JSONDecodeError:
-                    continue
-
-        # Second pass: find first non-meta user message
-        with open(filepath, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                    if (
-                        obj.get("type") == "user"
-                        and not obj.get("isMeta")
-                        and obj.get("message", {}).get("content")
-                    ):
-                        content = obj["message"]["content"]
-                        text = extract_text_from_content(content)
-                        if text and not text.startswith("<"):
-                            if len(text) > max_length:
-                                return text[: max_length - 3] + "..."
-                            return text
-                except json.JSONDecodeError:
-                    continue
-    except Exception:
-        pass
-
-    return "(no summary)"
-
-
-def find_local_sessions(folder, limit=10):
-    """Find recent JSONL session files in the given folder.
-
-    Returns a list of (Path, summary) tuples sorted by modification time.
-    Excludes agent files and warmup/empty sessions.
-    """
-    folder = Path(folder)
-    if not folder.exists():
-        return []
-
-    results = []
-    for f in folder.glob("**/*.jsonl"):
-        if f.name.startswith("agent-"):
-            continue
-        summary = get_session_summary(f)
-        # Skip boring/empty sessions
-        if summary.lower() == "warmup" or summary == "(no summary)":
-            continue
-        results.append((f, summary))
-
-    # Sort by modification time, most recent first
-    results.sort(key=lambda x: x[0].stat().st_mtime, reverse=True)
-    return results[:limit]
-
-
-def find_all_sessions(folder, include_agents=False):
-    """Find all sessions in a Claude projects folder, grouped by project.
-
-    Returns a list of project dicts, each containing:
-    - name: display name for the project
-    - path: Path to the project folder
-    - sessions: list of session dicts with path, summary, mtime, size
-
-    Sessions are sorted by modification time (most recent first) within each project.
-    Projects are sorted by their most recent session.
-    """
-    folder = Path(folder)
-    if not folder.exists():
-        return []
-
-    projects = {}
-
-    for session_file in folder.glob("**/*.jsonl"):
-        # Skip agent files unless requested
-        if not include_agents and session_file.name.startswith("agent-"):
-            continue
-
-        # Get summary and skip boring sessions
-        summary = get_session_summary(session_file)
-        if summary.lower() == "warmup" or summary == "(no summary)":
-            continue
-
-        # Get project folder
-        project_folder = session_file.parent
-        project_key = project_folder.name
-
-        if project_key not in projects:
-            projects[project_key] = {
-                "name": get_project_display_name(project_key),
-                "path": project_folder,
-                "sessions": [],
-            }
-
-        stat = session_file.stat()
-        projects[project_key]["sessions"].append(
-            {
-                "path": session_file,
-                "summary": summary,
-                "mtime": stat.st_mtime,
-                "size": stat.st_size,
-            }
-        )
-
-    # Sort sessions within each project by mtime (most recent first)
-    for project in projects.values():
-        project["sessions"].sort(key=lambda s: s["mtime"], reverse=True)
-
-    # Convert to list and sort projects by most recent session
-    result = list(projects.values())
-    result.sort(
-        key=lambda p: p["sessions"][0]["mtime"] if p["sessions"] else 0, reverse=True
-    )
-
-    return result
 
 
 def generate_batch_html(
@@ -410,57 +236,6 @@ def _generate_master_index(projects, output_dir):
 
     output_path = output_dir / "index.html"
     output_path.write_text(html_content, encoding="utf-8")
-
-
-def parse_session_file(filepath):
-    """Parse a session file and return normalized data.
-
-    Supports both JSON and JSONL formats.
-    Returns a dict with 'loglines' key containing the normalized entries.
-    """
-    filepath = Path(filepath)
-
-    if filepath.suffix == ".jsonl":
-        return _parse_jsonl_file(filepath)
-    else:
-        # Standard JSON format
-        with open(filepath, "r", encoding="utf-8") as f:
-            return json.load(f)
-
-
-def _parse_jsonl_file(filepath):
-    """Parse JSONL file and convert to standard format."""
-    loglines = []
-
-    with open(filepath, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-                entry_type = obj.get("type")
-
-                # Skip non-message entries
-                if entry_type not in ("user", "assistant"):
-                    continue
-
-                # Convert to standard format
-                entry = {
-                    "type": entry_type,
-                    "timestamp": obj.get("timestamp", ""),
-                    "message": obj.get("message", {}),
-                }
-
-                # Preserve isCompactSummary if present
-                if obj.get("isCompactSummary"):
-                    entry["isCompactSummary"] = True
-
-                loglines.append(entry)
-            except json.JSONDecodeError:
-                continue
-
-    return {"loglines": loglines}
 
 
 class CredentialsError(Exception):
@@ -878,29 +653,6 @@ def render_markdown_text(text):
             "pymdownx.tasklist",
             CopySourceExtension(),
         ],
-    )
-
-
-def is_json_like(text):
-    if not text or not isinstance(text, str):
-        return False
-    text = text.strip()
-    return (text.startswith("{") and text.endswith("}")) or (
-        text.startswith("[") and text.endswith("]")
-    )
-
-
-def is_task_notification(content):
-    """Detect background-task completion entries injected by Claude Code.
-
-    These arrive as type:user entries whose message.content is a string
-    beginning with `<task-notification>`. They are machine-generated, not
-    human prompts, so they must not be classified as User messages, must
-    not start new conversation blocks, and must not appear as index items.
-    See simonw/claude-code-transcripts#99.
-    """
-    return isinstance(content, str) and content.lstrip().startswith(
-        "<task-notification>"
     )
 
 
