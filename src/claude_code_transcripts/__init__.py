@@ -51,10 +51,6 @@ from .core.analysis import (
 )
 from . import notify, spawn
 
-# Module-level GitHub repo, shared between generate_html and the block renderers
-# until it is threaded through explicitly. Read/written as a package attribute.
-_github_repo = None
-
 # Public deps-carrying symbols -> the submodule that defines each one. Resolved
 # on first access by ``__getattr__``; importing ``core`` never triggers these.
 _LAZY_SYMBOLS = {

@@ -695,21 +695,13 @@ class TestRenderContentBlock:
 
     def test_tool_result_with_commit(self, snapshot_html):
         """Test tool result with git commit output."""
-        # Need to set the global _github_repo for commit link rendering
-        import claude_code_transcripts
-
-        old_repo = claude_code_transcripts._github_repo
-        claude_code_transcripts._github_repo = "example/repo"
-        try:
-            block = {
-                "type": "tool_result",
-                "content": "[main abc1234] Add new feature\n 2 files changed, 10 insertions(+)",
-                "is_error": False,
-            }
-            result = render_content_block(block)
-            assert result == snapshot_html
-        finally:
-            claude_code_transcripts._github_repo = old_repo
+        block = {
+            "type": "tool_result",
+            "content": "[main abc1234] Add new feature\n 2 files changed, 10 insertions(+)",
+            "is_error": False,
+        }
+        result = render_content_block(block, github_repo="example/repo")
+        assert result == snapshot_html
 
     def test_tool_result_with_image(self, snapshot_html):
         """Test tool result containing image blocks in content array.

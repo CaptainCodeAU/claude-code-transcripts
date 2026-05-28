@@ -140,8 +140,6 @@ def generate_html(json_path, output_dir, github_repo=None):
                 "Warning: Could not auto-detect GitHub repo. Commit links will be disabled."
             )
 
-    _root._github_repo = github_repo
-
     conversations = []
     current_conv = None
     for entry in loglines:
@@ -186,7 +184,9 @@ def generate_html(json_path, output_dir, github_repo=None):
         for conv in page_convs:
             is_first = True
             for log_type, message_json, timestamp in conv["messages"]:
-                msg_html = render_message(log_type, message_json, timestamp)
+                msg_html = render_message(
+                    log_type, message_json, timestamp, github_repo
+                )
                 if msg_html:
                     # Wrap continuation summaries in collapsed details
                     if is_first and conv.get("is_continuation"):
@@ -271,7 +271,7 @@ def generate_html(json_path, output_dir, github_repo=None):
     # Add commits as separate timeline items
     for commit_ts, commit_hash, commit_msg, page_num, conv_idx in all_commits:
         item_html = get_macros().index_commit(
-            commit_hash, commit_msg, commit_ts, _root._github_repo
+            commit_hash, commit_msg, commit_ts, github_repo
         )
         timeline_items.append((commit_ts, "commit", item_html))
 
@@ -311,8 +311,6 @@ def generate_html_from_session_data(session_data, output_dir, github_repo=None):
         github_repo = detect_github_repo(loglines)
         if github_repo:
             click.echo(f"Auto-detected GitHub repo: {github_repo}")
-
-    _root._github_repo = github_repo
 
     conversations = []
     current_conv = None
@@ -358,7 +356,9 @@ def generate_html_from_session_data(session_data, output_dir, github_repo=None):
         for conv in page_convs:
             is_first = True
             for log_type, message_json, timestamp in conv["messages"]:
-                msg_html = render_message(log_type, message_json, timestamp)
+                msg_html = render_message(
+                    log_type, message_json, timestamp, github_repo
+                )
                 if msg_html:
                     # Wrap continuation summaries in collapsed details
                     if is_first and conv.get("is_continuation"):
@@ -443,7 +443,7 @@ def generate_html_from_session_data(session_data, output_dir, github_repo=None):
     # Add commits as separate timeline items
     for commit_ts, commit_hash, commit_msg, page_num, conv_idx in all_commits:
         item_html = get_macros().index_commit(
-            commit_hash, commit_msg, commit_ts, _root._github_repo
+            commit_hash, commit_msg, commit_ts, github_repo
         )
         timeline_items.append((commit_ts, "commit", item_html))
 

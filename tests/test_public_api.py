@@ -78,14 +78,3 @@ def test_patchable_module_attr_resolves(pkg, mod, attr):
     module = getattr(pkg, mod, None)
     assert module is not None, f"claude_code_transcripts.{mod} must be a live attribute"
     assert hasattr(module, attr), f"claude_code_transcripts.{mod}.{attr} must resolve"
-
-
-def test_github_repo_attr_is_settable(pkg):
-    # tests/test_generate_html.py reads and writes this module global.
-    original = getattr(pkg, "_github_repo", "__missing__")
-    assert original != "__missing__", "claude_code_transcripts._github_repo must exist"
-    try:
-        pkg._github_repo = "owner/repo"
-        assert pkg._github_repo == "owner/repo"
-    finally:
-        pkg._github_repo = None if original == "__missing__" else original

@@ -8,8 +8,6 @@ from ..core.jsonl import is_json_like, is_task_notification
 from .env import get_macros
 from .markdown_ext import render_markdown_text
 
-import claude_code_transcripts as _root
-
 
 def format_json(obj):
     try:
@@ -85,7 +83,7 @@ def render_bash_tool(tool_input, tool_id):
     return get_macros().bash_tool(command, description, tool_id)
 
 
-def render_content_block(block):
+def render_content_block(block, github_repo=None):
     if not isinstance(block, dict):
         return f"<p>{html.escape(str(block))}</p>"
     block_type = block.get("type", "")
@@ -139,9 +137,7 @@ def render_content_block(block):
                     commit_hash = match.group(1)
                     commit_msg = match.group(2)
                     parts.append(
-                        get_macros().commit_card(
-                            commit_hash, commit_msg, _root._github_repo
-                        )
+                        get_macros().commit_card(commit_hash, commit_msg, github_repo)
                     )
                     last_end = match.end()
 
@@ -187,7 +183,7 @@ def render_content_block(block):
         return format_json(block)
 
 
-def render_user_message_content(message_data):
+def render_user_message_content(message_data, github_repo=None):
     content = message_data.get("content", "")
     if isinstance(content, str):
         # Auto-suppress the inner copy button: when user message content is a
@@ -200,22 +196,22 @@ def render_user_message_content(message_data):
             render_markdown_text(content), content, suppress_copy_btn=True
         )
     elif isinstance(content, list):
-        return "".join(render_content_block(block) for block in content)
+        return "".join(render_content_block(block, github_repo) for block in content)
     return f"<p>{html.escape(str(content))}</p>"
 
 
-def render_assistant_message(message_data):
+def render_assistant_message(message_data, github_repo=None):
     content = message_data.get("content", [])
     if not isinstance(content, list):
         return f"<p>{html.escape(str(content))}</p>"
-    return "".join(render_content_block(block) for block in content)
+    return "".join(render_content_block(block, github_repo) for block in content)
 
 
 def make_msg_id(timestamp):
     return f"msg-{timestamp.replace(':', '-').replace('.', '-')}"
 
 
-def render_message(log_type, message_json, timestamp):
+def render_message(log_type, message_json, timestamp, github_repo=None):
     if not message_json:
         return ""
     try:
@@ -223,7 +219,7 @@ def render_message(log_type, message_json, timestamp):
     except json.JSONDecodeError:
         return ""
     if log_type == "user":
-        content_html = render_user_message_content(message_data)
+        content_html = render_user_message_content(message_data, github_repo)
         # Check if this is a tool result or a background-task notification
         if is_tool_result_message(message_data) or is_task_notification(
             message_data.get("content", "")
@@ -232,7 +228,7 @@ def render_message(log_type, message_json, timestamp):
         else:
             role_class, role_label = "user", "User"
     elif log_type == "assistant":
-        content_html = render_assistant_message(message_data)
+        content_html = render_assistant_message(message_data, github_repo)
         role_class, role_label = "assistant", "Assistant"
     else:
         return ""
