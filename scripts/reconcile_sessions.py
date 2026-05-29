@@ -1,7 +1,12 @@
 # /// script
 # requires-python = ">=3.10"
 # ///
-"""Reconcile orphan Claude Code session folders into project directories.
+"""Reconcile a transcript archive.
+
+Default mode folds orphan session folders into their project directories.
+``--merge-drift`` additionally re-derives each session's correct project from
+its JSONL ``cwd`` and merges drifted folders (moves uniques, soft-deletes
+byte-equal duplicates to ``_DELETE/``, refuses content-differing collisions).
 
 Run via: uv run python scripts/reconcile_sessions.py <path>
 """
@@ -84,6 +89,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--fix-mtimes",
         action="store_true",
         help="Correct file modification times across the entire archive to match JSONL session timestamps.",
+    )
+    parser.add_argument(
+        "--merge-drift",
+        action="store_true",
+        help=(
+            "Re-derive each session's correct project from its JSONL cwd and "
+            "merge drifted folders: move uniques, soft-delete byte-equal "
+            "duplicates to _DELETE/, refuse content-differing collisions. "
+            "Honors --dry-run / --yes / --no-reindex."
+        ),
     )
     return parser.parse_args(argv)
 
@@ -1287,6 +1302,240 @@ def print_archive_summary(archive_path: Path) -> None:
     print(f"Sessions: {CYAN}{total_sessions:,}{RESET}")
 
 
+# ---------------------------------------------------------------------------
+# Drifted-folder merge mode (--merge-drift)
+#
+# The flagship CLI resolves project names cwd-first via the fixed
+# get_project_display_name. Old plugin output may still leave sessions under a
+# drifted folder (e.g. ``Owner-claude-transcripts/`` when cwd derives to
+# ``Owner-claude-code-transcripts/``). This pass re-derives each session's
+# correct project from its JSONL cwd and either MOVES it (no collision),
+# DEDUPES the wrong copy (byte-equal collision -> soft-delete to _DELETE/), or
+# refuses (content-differing collision -> CONFLICT, never auto-resolved).
+# ---------------------------------------------------------------------------
+
+
+class DriftAction(Enum):
+    MOVE = auto()
+    DEDUPE_IDENTICAL = auto()
+    CONFLICT = auto()
+
+
+@dataclass
+class DriftedSession:
+    uuid_dir: Path
+    current_project: str
+    correct_project: str
+    cwd: str
+
+
+@dataclass
+class DriftPlanItem:
+    drifted: DriftedSession
+    action: DriftAction
+    reason: str
+    target_path: Path
+
+
+@dataclass
+class DriftReport:
+    moved: int = 0
+    deduped: int = 0
+    conflicts: list[DriftPlanItem] = field(default_factory=list)
+    touched_projects: set[str] = field(default_factory=set)
+    drained_projects: list[Path] = field(default_factory=list)
+
+
+def _iter_project_session_dirs(archive_path: Path):
+    """Yield (project_dir, session_dir) for each session under each project.
+
+    Skips ``_``-prefixed folders (_DELETE, _UNKNOWN, ...) and non-directories
+    (e.g. the master ``index.html``).
+    """
+    for project_dir in sorted(archive_path.iterdir()):
+        if not project_dir.is_dir() or project_dir.name.startswith("_"):
+            continue
+        for session_dir in sorted(project_dir.iterdir()):
+            if session_dir.is_dir() and _is_session_dir(session_dir):
+                yield project_dir, session_dir
+
+
+def find_drifted_sessions(
+    archive_path: Path,
+) -> tuple[list[DriftedSession], list[tuple[Path, str]]]:
+    """Scan the archive and classify each session.
+
+    Returns ``(drifted, skipped)`` where ``skipped`` lists
+    ``(session_dir, reason)`` for sessions whose JSONL has no usable ``cwd``
+    (we cannot safely re-derive the project, so we leave them in place).
+    """
+    drifted: list[DriftedSession] = []
+    skipped: list[tuple[Path, str]] = []
+    for project_dir, session_dir in _iter_project_session_dirs(archive_path):
+        jsonl = _find_jsonl_in_dir(session_dir)
+        if not jsonl:
+            skipped.append((session_dir, "no JSONL found"))
+            continue
+        cwd = extract_cwd_from_jsonl(jsonl)
+        if not cwd:
+            skipped.append((session_dir, "no cwd in JSONL"))
+            continue
+        correct = cwd_to_project_name(cwd)
+        if correct == project_dir.name:
+            continue
+        drifted.append(
+            DriftedSession(
+                uuid_dir=session_dir,
+                current_project=project_dir.name,
+                correct_project=correct,
+                cwd=cwd,
+            )
+        )
+    return drifted, skipped
+
+
+def classify_drift(drifted: DriftedSession, archive_path: Path) -> DriftPlanItem:
+    """Decide MOVE / DEDUPE_IDENTICAL / CONFLICT for one drifted session."""
+    target = archive_path / drifted.correct_project / drifted.uuid_dir.name
+    if not target.exists():
+        return DriftPlanItem(
+            drifted=drifted,
+            action=DriftAction.MOVE,
+            reason="no collision in correct project",
+            target_path=target,
+        )
+    winner, detail = compare_session_copies(drifted.uuid_dir, target)
+    if winner == "identical":
+        return DriftPlanItem(
+            drifted=drifted,
+            action=DriftAction.DEDUPE_IDENTICAL,
+            reason=f"byte-equal collision ({detail})",
+            target_path=target,
+        )
+    return DriftPlanItem(
+        drifted=drifted,
+        action=DriftAction.CONFLICT,
+        reason=f"differing collision ({detail}; richer copy: {winner})",
+        target_path=target,
+    )
+
+
+def _project_dir_is_empty(project_dir: Path) -> bool:
+    """True if the project dir holds only an ``index.html`` (or nothing)."""
+    try:
+        for entry in project_dir.iterdir():
+            if entry.name != "index.html":
+                return False
+        return True
+    except OSError:
+        return False
+
+
+def execute_drift_plan(
+    plan: list[DriftPlanItem], archive_path: Path, dry_run: bool
+) -> DriftReport:
+    """Apply the plan. Dry-run records conflicts but makes no changes."""
+    report = DriftReport()
+    if dry_run:
+        for item in plan:
+            if item.action == DriftAction.CONFLICT:
+                report.conflicts.append(item)
+        return report
+
+    drain_candidates: set[Path] = set()
+    for item in plan:
+        d = item.drifted
+        if item.action == DriftAction.MOVE:
+            item.target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(d.uuid_dir), str(item.target_path))
+            report.moved += 1
+            report.touched_projects.add(d.current_project)
+            report.touched_projects.add(d.correct_project)
+            drain_candidates.add(d.uuid_dir.parent)
+        elif item.action == DriftAction.DEDUPE_IDENTICAL:
+            move_to_delete_folder(
+                d.uuid_dir,
+                archive_path,
+                subfolder=f"drift-dedupe/{d.current_project}",
+            )
+            report.deduped += 1
+            report.touched_projects.add(d.current_project)
+            drain_candidates.add(d.uuid_dir.parent)
+        elif item.action == DriftAction.CONFLICT:
+            report.conflicts.append(item)
+
+    # Soft-delete any source project folder that has been drained empty.
+    for project_dir in drain_candidates:
+        if project_dir.exists() and _project_dir_is_empty(project_dir):
+            moved_to = move_to_delete_folder(
+                project_dir, archive_path, subfolder="drift-empty-projects"
+            )
+            report.drained_projects.append(moved_to)
+
+    return report
+
+
+def format_drift_plan(
+    plan: list[DriftPlanItem], skipped: list[tuple[Path, str]]
+) -> str:
+    """Human-readable summary of the drift plan."""
+    if not plan and not skipped:
+        return f"{GREEN}No drifted sessions found.{RESET}"
+
+    moves = [p for p in plan if p.action == DriftAction.MOVE]
+    dedupes = [p for p in plan if p.action == DriftAction.DEDUPE_IDENTICAL]
+    conflicts = [p for p in plan if p.action == DriftAction.CONFLICT]
+
+    lines = [
+        f"{BOLD}Drifted-folder merge plan:{RESET}",
+        f"  {GREEN}move{RESET}     {len(moves):>4}   "
+        f"(unique sessions in the wrong folder)",
+        f"  {YELLOW}dedupe{RESET}   {len(dedupes):>4}   "
+        f"(byte-equal copies of sessions already in the correct folder)",
+        f"  {RED}conflict{RESET} {len(conflicts):>4}   "
+        f"(different content; will NOT be touched)",
+        f"  {DIM}skipped{RESET}  {len(skipped):>4}   "
+        f"(no usable cwd / JSONL missing)",
+    ]
+
+    def _by_target(items: list[DriftPlanItem]) -> dict[str, list[DriftPlanItem]]:
+        groups: dict[str, list[DriftPlanItem]] = {}
+        for it in items:
+            key = f"{it.drifted.current_project} -> {it.drifted.correct_project}"
+            groups.setdefault(key, []).append(it)
+        return groups
+
+    if moves:
+        lines.append("")
+        lines.append(f"{BOLD}{GREEN}Moves:{RESET}")
+        for key, items in _by_target(moves).items():
+            lines.append(f"  {CYAN}{key}{RESET}  ({len(items)})")
+            for it in items[:5]:
+                lines.append(f"    {DIM}{it.drifted.uuid_dir.name}{RESET}")
+            if len(items) > 5:
+                lines.append(f"    {DIM}... and {len(items) - 5} more{RESET}")
+
+    if dedupes:
+        lines.append("")
+        lines.append(
+            f"{BOLD}{YELLOW}Dedupes (soft-delete to _DELETE/drift-dedupe/):{RESET}"
+        )
+        for key, items in _by_target(dedupes).items():
+            lines.append(f"  {CYAN}{key}{RESET}  ({len(items)})")
+
+    if conflicts:
+        lines.append("")
+        lines.append(f"{BOLD}{RED}Conflicts (untouched; resolve manually):{RESET}")
+        for it in conflicts:
+            lines.append(
+                f"  {it.drifted.uuid_dir.name}  "
+                f"{DIM}{it.drifted.current_project} vs "
+                f"{it.drifted.correct_project}{RESET}  {it.reason}"
+            )
+
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     archive_path = Path(args.path).resolve()
@@ -1302,7 +1551,7 @@ def main(argv: list[str] | None = None) -> None:
 
     uuid_folders = find_uuid_folders(archive_path)
 
-    if not uuid_folders and args.no_reindex:
+    if not uuid_folders and args.no_reindex and not args.merge_drift:
         print(f"\n{GREEN}No orphan folders found. Archive is clean.{RESET}")
         sys.exit(0)
 
@@ -1520,6 +1769,48 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"  {YELLOW}Skipped.{RESET}")
             print()
 
+    # Drifted-folder merge (--merge-drift): re-derive each session's correct
+    # project from its JSONL cwd and merge.
+    drift_changed = False
+    if args.merge_drift:
+        print()
+        print(f"{BOLD}Scanning for drifted sessions...{RESET}")
+        drifted, drift_skipped = find_drifted_sessions(archive_path)
+        drift_plan = [classify_drift(d, archive_path) for d in drifted]
+        print(format_drift_plan(drift_plan, drift_skipped))
+        drift_actionable = sum(
+            1
+            for it in drift_plan
+            if it.action in (DriftAction.MOVE, DriftAction.DEDUPE_IDENTICAL)
+        )
+        if args.dry_run:
+            if drift_actionable:
+                print(f"\n  {YELLOW}Drift apply: skipped (dry run){RESET}")
+        elif drift_actionable:
+            print()
+            if confirm(
+                f"Apply {drift_actionable} drift action"
+                f"{'s' if drift_actionable != 1 else ''}?",
+                args.yes,
+            ):
+                drift_report = execute_drift_plan(
+                    drift_plan, archive_path, dry_run=False
+                )
+                drift_changed = drift_report.moved > 0 or drift_report.deduped > 0
+                report.projects_affected.update(drift_report.touched_projects)
+                print(
+                    f"  {GREEN}Moved: {drift_report.moved}{RESET}  "
+                    f"{YELLOW}Deduped: {drift_report.deduped}{RESET}  "
+                    f"{RED}Conflicts: {len(drift_report.conflicts)}{RESET}"
+                )
+                if drift_report.drained_projects:
+                    print(
+                        f"  {DIM}Drained empty source projects: "
+                        f"{len(drift_report.drained_projects)}{RESET}"
+                    )
+            else:
+                print(f"  {YELLOW}Skipped.{RESET}")
+
     # Fix project folder mtimes for affected projects
     if not args.dry_run and report.projects_affected:
         for project_name in report.projects_affected:
@@ -1535,7 +1826,7 @@ def main(argv: list[str] | None = None) -> None:
         + report.replaced
         + report.cleaned_duplicates
         + report.cleaned_empty
-    ) > 0
+    ) > 0 or drift_changed
     if not args.no_reindex and not args.dry_run and archive_changed:
         print(f"\n{BOLD}Rebuilding indexes...{RESET}")
         try:
