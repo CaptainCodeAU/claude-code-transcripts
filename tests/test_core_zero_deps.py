@@ -73,7 +73,22 @@ def test_picker_is_stdlib_only():
     assert not pulled, f"importing picker pulled third-party deps: {pulled}"
 
 
+def test_cli_dropped_questionary():
+    """The cli layer replaced questionary with the stdlib picker.
+
+    click is NOT asserted absent here: while click is installed, httpx's optional
+    CLI shim (httpx/_main.py) imports it on ``import httpx``, and cli still pulls
+    httpx (BACKLOG 4.4). Once click is uninstalled (the dependency drop), httpx
+    imports cleanly without it and cli no longer pulls click either.
+    """
+    pulled = set(_third_party_after_import("claude_code_transcripts.cli"))
+    assert "questionary" not in pulled
+
+
 def test_detector_catches_a_deps_carrying_module():
-    """Sanity check: the fence really would fail for the cli module (pulls click)."""
+    """Sanity check: the fence really would fail for a module that pulls a dep.
+
+    cli still legitimately imports httpx, so it is the detector's canary.
+    """
     pulled = _third_party_after_import("claude_code_transcripts.cli")
-    assert "click" in pulled
+    assert "httpx" in pulled

@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from click.testing import CliRunner
+from conftest import CliRunner
 
 from claude_code_transcripts import (
     cli,

@@ -7,13 +7,12 @@ This package is layered so the session-capture hot path stays dependency-light:
 - ``notify`` / ``spawn``  stdlib-only capture helpers
 - ``render``         jinja2 + markdown  (lazy)
 - ``fetch``          httpx + keychain   (lazy)
-- ``cli``            click + questionary (lazy)
+- ``cli``            stdlib argparse + stdlib picker (lazy; still imports httpx)
 
 Importing this package, or any ``core`` submodule, pulls in **zero** third-party
 dependencies. Everything that does carry a dependency is re-exported lazily via
 the PEP 562 module ``__getattr__`` below, so ``import
-claude_code_transcripts.core.naming`` never drags in jinja2/markdown/httpx/
-click/questionary.
+claude_code_transcripts.core.naming`` never drags in jinja2/markdown/httpx.
 """
 
 import importlib
@@ -90,7 +89,7 @@ _LAZY_SYMBOLS = {
     "fetch_session": "fetch.api",
     "_fetch_teleport_events": "fetch.api",
     "format_session_for_display": "fetch.api",
-    # cli (click + questionary)
+    # cli (stdlib argparse + stdlib picker)
     "cli": "cli",
     "main": "cli",
     "create_gist": "cli",
@@ -121,6 +120,6 @@ def __getattr__(name):
     module = importlib.import_module(f".{target}", __name__)
     value = getattr(module, name)
     # Cache as a real attribute. For ``cli`` this also overwrites the submodule
-    # binding the import machinery set, so the attribute is the click group.
+    # binding the import machinery set, so the attribute is the entry-point callable.
     globals()[name] = value
     return value
