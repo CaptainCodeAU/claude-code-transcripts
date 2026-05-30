@@ -8,10 +8,12 @@ For a high-level overview, see the project [README](../README.md). For ready-mad
 
 | Command | Source of sessions | Default output dir | Auto-opens browser? |
 |---|---|---|---|
-| [`local`](#local-default) (default) | interactive picker over `~/.claude/projects` | temp dir | yes — unless `-o`, `--gist`, or `-a` is set |
-| [`json`](#json) | a local path or `http(s)` URL | temp dir | yes — unless `-o`, `--gist`, or `-a` is set |
-| [`web`](#web) | Claude API (`SESSION_ID` or interactive picker) | temp dir | yes — unless `-o`, `--gist`, or `-a` is set |
-| [`all`](#all) | a directory tree of project folders | `./claude-archive` | no — only with explicit `--open` |
+| [`local`](#local-default) (default) | interactive picker over `~/.claude/projects` | temp dir | yes, unless `-o`, `--gist`, or `-a` is set |
+| [`json`](#json) | a local path or `http(s)` URL | temp dir | yes, unless `-o`, `--gist`, or `-a` is set |
+| [`web`](#web) | Claude API (`SESSION_ID` or interactive picker) | temp dir | yes, unless `-o`, `--gist`, or `-a` is set |
+| [`all`](#all) | a directory tree of project folders | `./claude-archive` | no, only with explicit `--open` |
+| [`hook`](#hook) | SessionEnd JSON payload on stdin | `$TRANSCRIPT_EXPORT_DIR` (default `~/claude-code-transcripts`) | no (opt-in folder reveal via `TRANSCRIPT_OPEN_FOLDER=1`) |
+| [`render`](#render) | a specific session `.jsonl` (usually filed by `hook`) | required `-o` | no (opt-in folder reveal via `TRANSCRIPT_OPEN_FOLDER=1`) |
 | [`reconcile`](#reconcile) (standalone script) | orphan UUID folders in an archive dir | in-place | no |
 
 Global:
@@ -226,6 +228,108 @@ Preview an archive build without writing files:
 claude-code-transcripts all -s ~/.claude/projects -o ~/my-claude-code-transcripts --dry-run
 ```
 
+## `hook`
+
+Synopsis:
+
+```bash
+claude-code-transcripts hook < SESSION_END_PAYLOAD.json
+```
+
+Capture a session at SessionEnd: read the hook payload from stdin, resolve the
+correct project name from the session's `cwd` (cwd-first, lossless), file the
+raw `.jsonl` into the archive, fire desktop/voice notifications, and spawn a
+detached HTML render so session shutdown is never blocked. Returns in
+milliseconds.
+
+Designed to be wired into a Claude Code SessionEnd hook (typically via a thin
+plugin wrapper). Takes no CLI options; everything comes from the stdin payload
+plus a small set of environment variables (see
+[Environment variables](#environment-variables)).
+
+Stdin payload (JSON object):
+
+| Field | Required | Description |
+|---|---|---|
+| `session_id` | yes | Used in log entries and failure notifications. |
+| `transcript_path` | yes | Absolute path to the source `.jsonl` Claude Code wrote. |
+| `cwd` | optional | The session's working directory. When present (the usual case), used cwd-first to derive the correct project name. |
+
+Project-name resolution order (first match wins):
+
+1. payload `cwd`, encoded the same lossy way Claude Code does (`/`, `_`, `.` become `-`), then run through `get_project_display_name` (label `payload_cwd`).
+2. The first non-empty `cwd` field inside the JSONL itself (label `jsonl_cwd`).
+3. The parent folder of `transcript_path` (the lossy `~/.claude/projects/` encoded name, label `transcript_path`).
+4. `_unresolved/` (label `unresolved`), last resort.
+
+Skip rule: a session is skipped if its target session directory already has
+`index.html` AND a `<uuid>.jsonl` whose size matches the source (JSONL is
+append-only, so equal size means unchanged).
+
+Output layout:
+
+```
+<TRANSCRIPT_EXPORT_DIR>/<project>/<uuid>/
+├── <uuid>.jsonl       # raw transcript copy (written by hook)
+├── index.html         # written by the detached render child
+└── page-NNN.html
+```
+
+Behavior summary:
+
+| Outcome | Notify | Render spawned? | Folder revealed (if `TRANSCRIPT_OPEN_FOLDER=1`) |
+|---|---|---|---|
+| Filed (new) | `ok` | yes | by the render child after HTML is on disk |
+| Skipped (unchanged) | `skipped` | no | by the hook immediately (HTML already exists) |
+| Bad payload / missing transcript / filing error | `error` | no | no |
+
+Set `SKIP_SESSION_END_HOOK=1` to make `hook` no-op immediately (useful during
+in-progress automation that would otherwise trigger SessionEnd noise).
+
+## `render`
+
+Synopsis:
+
+```bash
+claude-code-transcripts render JSONL_FILE -o OUTPUT [--repo OWNER/NAME]
+```
+
+Render a single session's HTML into an existing output directory. This is the
+command that `hook` spawns in the background; you rarely call it directly, but
+it works fine standalone for re-rendering one session.
+
+Positional argument:
+
+- `JSONL_FILE`, path to a session `.jsonl`.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `-o, --output PATH` | path | (required) | Session output directory. Normally already created by `hook`. |
+| `--repo TEXT` | `owner/name` | auto-detected from `git push` in the log | GitHub repository for commit links. |
+| `--help` | flag | -- | Show command help and exit. |
+
+When `TRANSCRIPT_OPEN_FOLDER=1`, reveals the output folder after HTML is on
+disk (the render-side timing avoids the race where opening at hook-return
+would show only the raw JSONL).
+
+## Environment variables
+
+The capture pipeline and a couple of CLI behaviors read environment variables.
+Set them in your shell, your `hooks.json` command line, or (most commonly) in
+the plugin wrapper that delegates to `claude-code-transcripts hook`.
+
+| Variable | Used by | Default | Description |
+|---|---|---|---|
+| `TRANSCRIPT_EXPORT_DIR` | `hook` | `~/claude-code-transcripts` | Archive root for the capture pipeline. Expanded with `~`. |
+| `SKIP_SESSION_END_HOOK` | `hook` | unset | When `1`, `hook` returns immediately and does nothing. |
+| `TRANSCRIPT_VOICE_URL` | `hook`, `render` (via notify) | unset | Opt-in voice notification. When set, success/failure events POST a JSON payload to this URL via `curl --connect-timeout 2`. Unset means voice is silent. |
+| `TRANSCRIPT_VOICE_ID` | `hook`, `render` (via notify) | unset | Optional voice identifier; included in the POST when `TRANSCRIPT_VOICE_URL` is set. |
+| `TRANSCRIPT_OPEN_FOLDER` | `hook` (on skip), `render` (after success) | unset | Opt-in. When `1`, opens the session output folder in the platform file manager (`open` on macOS, `xdg-open` on Linux). |
+
+All capture-pipeline env vars are best-effort: an unavailable voice endpoint or
+missing `open`/`xdg-open` is swallowed silently so a SessionEnd never fails on
+unrelated infrastructure.
+
 ## `reconcile`
 
 Synopsis:
@@ -246,6 +350,8 @@ Positional argument:
 | `--no-reindex` | flag | off | Skip rebuilding project and master `index.html` pages after reconciliation. By default, all indexes are rebuilt. |
 | `--yes` | flag | off | Skip all interactive confirmations. |
 | `--verbose, -v` | flag | off | Show detailed error output on failures. |
+| `--merge-drift` | flag | off | Additionally re-derive each session's correct project from its JSONL `cwd` and merge drifted folders. See [Drift merge mode](#drift-merge-mode) below. |
+| `--fix-mtimes` | flag | off | Correct file modification times across the entire archive to match each JSONL's last internal timestamp. Useful after restoring from backups or moving files. |
 | `--cleanup` | flag | off | Legacy flag, no longer required. Duplicate/empty cleanup prompts now appear automatically. |
 | `--help` | flag | -- | Show command help and exit. |
 
@@ -259,7 +365,45 @@ Positional argument:
 6. **Prompt per group**: each group has its own confirmation. Declining one skips it and continues to the next. Duplicate orphans, empty folders, and unrecognized folders are prompted for soft-delete to `_DELETE/`.
 7. **Rebuild indexes** (only if the archive changed): scans the archive and regenerates project and master `index.html` pages. Skipped if `--dry-run`, `--no-reindex`, or no files were moved/replaced/deleted. Only indexes that actually changed are reported, with size deltas.
 
-Nothing is permanently deleted. Unwanted folders are moved to `_DELETE/` subdirectories (`duplicates/`, `empty/`, `unrecognized/`, `replaced/`). If a name collision occurs, a suffix (`-1`, `-2`, etc.) is appended.
+Nothing is permanently deleted. Unwanted folders are moved to `_DELETE/`
+subdirectories: `duplicates/`, `empty/`, `unrecognized/`, `replaced/` (orphan
+path), and `drift-dedupe/<wrong-project>/`, `drift-empty-projects/`
+([drift mode](#drift-merge-mode)). If a name collision occurs, a suffix (`-1`,
+`-2`, etc.) is appended.
+
+### Drift merge mode
+
+Pass `--merge-drift` to additionally reconcile *drifted project folders*: cases
+where a session sits in `Owner-foo-bar/` but its JSONL `cwd` actually derives
+to `Owner-foo-baz/`. This is a different problem from orphan handling (which
+moves stray UUID folders into projects); drift moves sessions *between*
+projects when the parent folder name is wrong.
+
+For each session under each non-`_` project folder, drift mode re-derives the
+correct project name from the session's `cwd` via the fixed
+`get_project_display_name` and picks one of:
+
+- **MOVE**: no collision in the correct project, so the session is relocated there.
+- **DEDUPE_IDENTICAL**: a session with the same UUID and a byte-equal JSONL
+  already exists in the correct project, so the wrong copy is soft-deleted to
+  `_DELETE/drift-dedupe/<wrong-project>/`.
+- **CONFLICT**: a session with the same UUID exists in the correct project but
+  the JSONL contents differ. Both copies are left in place and reported. Drift
+  mode never auto-resolves a content conflict (honors the same
+  nothing-is-permanently-deleted rule that governs the rest of the script).
+
+After per-session classification, any non-`_` project folder that no longer
+contains session data (just `index.html` or dotfiles like `.DS_Store`) is
+soft-deleted to `_DELETE/drift-empty-projects/`. The pass is idempotent: a
+re-run with no actual drift left will still drain any leftover empty folders
+from a prior partial run.
+
+Sessions whose JSONL has no `cwd` field are skipped with a logged reason and
+left in place.
+
+Dry-run previews include both the move/dedupe/conflict plan and the count of
+empty-folder candidates. The apply path prompts with a combined "Apply N drift
+actions and drain M empty folders?" confirmation (use `--yes` to skip).
 
 ### Examples
 
@@ -275,6 +419,12 @@ uv run python scripts/reconcile_sessions.py --yes ~/CODE/my-claude-code-transcri
 
 # Run without rebuilding indexes
 uv run python scripts/reconcile_sessions.py --no-reindex ~/CODE/my-claude-code-transcripts/
+
+# Drift mode: preview project-name drift remediation (re-derives from JSONL cwd)
+uv run python scripts/reconcile_sessions.py --merge-drift --dry-run ~/CODE/my-claude-code-transcripts/
+
+# Drift mode: apply (moves uniques, soft-deletes byte-equal dupes, drains empty projects)
+uv run python scripts/reconcile_sessions.py --merge-drift --yes ~/CODE/my-claude-code-transcripts/
 ```
 
 ## See also
