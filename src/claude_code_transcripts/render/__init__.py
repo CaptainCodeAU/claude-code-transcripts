@@ -1,1 +1,1 @@
-"""Render layer: jinja2 + markdown. Imports core only (plus click in html)."""
+"""Render layer: jinja2 + markdown only. Imports core, nothing else third-party."""

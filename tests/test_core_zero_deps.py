@@ -45,7 +45,29 @@ def test_core_import_pulls_no_third_party(module):
     assert not pulled, f"importing {module} pulled third-party deps: {pulled}"
 
 
+# Layer isolation: render owns jinja2 + markdown only; click/questionary belong
+# strictly to the cli layer, httpx strictly to fetch. Importing any render
+# submodule must not drag click/questionary/httpx in.
+RENDER_MODULES = (
+    "claude_code_transcripts.render.env",
+    "claude_code_transcripts.render.assets",
+    "claude_code_transcripts.render.markdown_ext",
+    "claude_code_transcripts.render.blocks",
+    "claude_code_transcripts.render.gist",
+    "claude_code_transcripts.render.indexes",
+    "claude_code_transcripts.render.html",
+)
+RENDER_FORBIDDEN = {"click", "questionary", "httpx"}
+
+
+@pytest.mark.parametrize("module", RENDER_MODULES)
+def test_render_import_pulls_no_cli_or_fetch_deps(module):
+    pulled = _third_party_after_import(module)
+    leaked = RENDER_FORBIDDEN & set(pulled)
+    assert not leaked, f"importing {module} leaked layer deps: {sorted(leaked)}"
+
+
 def test_detector_catches_a_deps_carrying_module():
-    """Sanity check: the fence really would fail for a render submodule."""
-    pulled = _third_party_after_import("claude_code_transcripts.render.html")
-    assert FORBIDDEN[0] in pulled or "jinja2" in pulled
+    """Sanity check: the fence really would fail for the cli module (pulls click)."""
+    pulled = _third_party_after_import("claude_code_transcripts.cli")
+    assert "click" in pulled

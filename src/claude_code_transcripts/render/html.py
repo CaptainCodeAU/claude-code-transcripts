@@ -4,8 +4,6 @@ import json
 import shutil
 from pathlib import Path
 
-import click
-
 from ..core.analysis import analyze_conversation, format_tool_stats
 from ..core.archive import find_all_sessions
 from ..core.github import detect_github_repo
@@ -310,7 +308,7 @@ def generate_html_from_session_data(session_data, output_dir, github_repo=None):
     if github_repo is None:
         github_repo = detect_github_repo(loglines)
         if github_repo:
-            click.echo(f"Auto-detected GitHub repo: {github_repo}")
+            print(f"Auto-detected GitHub repo: {github_repo}")
 
     conversations = []
     current_conv = None
@@ -378,7 +376,7 @@ def generate_html_from_session_data(session_data, output_dir, github_repo=None):
         (output_dir / f"page-{page_num:03d}.html").write_text(
             page_content, encoding="utf-8"
         )
-        click.echo(f"Generated page-{page_num:03d}.html")
+        print(f"Generated page-{page_num:03d}.html")
 
     # Calculate overall stats and collect all commits for timeline
     total_tool_counts = {}
@@ -466,6 +464,6 @@ def generate_html_from_session_data(session_data, output_dir, github_repo=None):
     )
     index_path = output_dir / "index.html"
     index_path.write_text(index_content, encoding="utf-8")
-    click.echo(
+    print(
         f"Generated {index_path.resolve()} ({total_convs} prompts, {total_pages} pages)"
     )
