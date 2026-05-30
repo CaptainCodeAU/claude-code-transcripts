@@ -73,15 +73,15 @@ def test_picker_is_stdlib_only():
     assert not pulled, f"importing picker pulled third-party deps: {pulled}"
 
 
-def test_cli_dropped_questionary():
-    """The cli layer replaced questionary with the stdlib picker.
+def test_cli_dropped_click_and_questionary():
+    """The cli layer is now stdlib argparse + the stdlib picker.
 
-    click is NOT asserted absent here: while click is installed, httpx's optional
-    CLI shim (httpx/_main.py) imports it on ``import httpx``, and cli still pulls
-    httpx (BACKLOG 4.4). Once click is uninstalled (the dependency drop), httpx
-    imports cleanly without it and cli no longer pulls click either.
+    Neither click nor questionary is in the dependency closure any more, so
+    importing cli pulls neither. (httpx imports cleanly without click now that it
+    is uninstalled; httpx itself is still pulled, dropped in BACKLOG 4.4.)
     """
     pulled = set(_third_party_after_import("claude_code_transcripts.cli"))
+    assert "click" not in pulled
     assert "questionary" not in pulled
 
 

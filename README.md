@@ -22,7 +22,7 @@ Features added in this fork beyond the upstream project.
 - **Batch archive source inclusion** via the `all` command with `--json/--no-json` support
 
 **Architecture and automation (0.7):**
-- **Layered package** with a stdlib-only core: importing `claude_code_transcripts.core.*` pulls zero third-party deps (locked by a fence test), so a future stdlib-only plugin shim can share naming and resolution logic without dragging in jinja2 / markdown / click / httpx / questionary
+- **Layered package** with a stdlib-only core: importing `claude_code_transcripts.core.*` pulls zero third-party deps (locked by a fence test), so a future stdlib-only plugin shim can share naming and resolution logic without dragging in jinja2 / markdown / httpx. The CLI itself is stdlib `argparse` plus a stdlib arrow-key session picker, so it no longer depends on `click` / `click-default-group` / `questionary`
 - **SessionEnd capture pipeline** via the new [`hook`](docs/CLI.md#hook) and [`render`](docs/CLI.md#render) subcommands: cwd-first project-name resolution, idempotent skip on unchanged sessions, fast capture, and a detached background render so session shutdown is never blocked
 - **Env-driven configuration** for the pipeline: `TRANSCRIPT_EXPORT_DIR`, opt-in `TRANSCRIPT_VOICE_URL` / `TRANSCRIPT_VOICE_ID`, `TRANSCRIPT_OPEN_FOLDER`, `SKIP_SESSION_END_HOOK` (see [`docs/CLI.md#environment-variables`](docs/CLI.md#environment-variables))
 - **Companion plugin** for automatic session-end export via [claude-transcript-exporter](https://github.com/CaptainCodeAU/gz-claude-code-plugins): now a thin wrapper that pipes the SessionEnd payload to `claude-code-transcripts hook` with no business logic of its own, so naming/resolve/skip/render stay in one place and can't drift

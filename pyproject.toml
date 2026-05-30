@@ -9,13 +9,10 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "click",
-    "click-default-group",
     "httpx",
     "jinja2",
     "markdown",
     "pymdown-extensions",
-    "questionary",
 ]
 
 [project.urls]
