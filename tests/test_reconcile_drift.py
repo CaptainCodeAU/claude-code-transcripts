@@ -334,3 +334,37 @@ class TestMainMergeDriftFlag:
         # The unique drifted session should now be in the correct folder.
         assert (tmp_path / PROJ_CORRECT / U1 / f"{U1}.jsonl").exists()
         assert not (tmp_path / PROJ_WRONG / U1).exists()
+
+    def test_apply_drains_leftover_empties_even_with_no_drift(self, tmp_path, capsys):
+        # No drifted sessions, but an empty wrong-name folder is leftover from a
+        # prior incomplete run. --merge-drift apply must still drain it.
+        _make_session(tmp_path, PROJ_CORRECT, U1, CWD_CORRECT)
+        leftover = tmp_path / PROJ_WRONG
+        leftover.mkdir()
+        (leftover / "index.html").write_text("<html></html>")
+        (leftover / ".DS_Store").write_bytes(b"\x00" * 8)
+
+        main(["--merge-drift", "--yes", str(tmp_path)])
+
+        out = capsys.readouterr().out
+        assert "Empty project folders to drain" in out
+        assert not leftover.exists()
+        assert any(
+            p.name == PROJ_WRONG for p in (tmp_path / "_DELETE").rglob(PROJ_WRONG)
+        )
+        # Real project untouched.
+        assert (tmp_path / PROJ_CORRECT / U1).exists()
+
+    def test_dry_run_previews_leftover_empties(self, tmp_path, capsys):
+        _make_session(tmp_path, PROJ_CORRECT, U1, CWD_CORRECT)
+        leftover = tmp_path / PROJ_WRONG
+        leftover.mkdir()
+        (leftover / "index.html").write_text("<html></html>")
+
+        main(["--merge-drift", "--dry-run", "--yes", str(tmp_path)])
+
+        out = capsys.readouterr().out
+        assert "Empty project folders to drain" in out
+        assert PROJ_WRONG in out
+        # Nothing actually moved.
+        assert leftover.exists()

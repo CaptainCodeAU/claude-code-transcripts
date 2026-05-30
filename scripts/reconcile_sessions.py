@@ -1799,20 +1799,51 @@ def main(argv: list[str] | None = None) -> None:
             for it in drift_plan
             if it.action in (DriftAction.MOVE, DriftAction.DEDUPE_IDENTICAL)
         )
+
+        # Preview empty project folders that would be drained on apply
+        # (including leftovers from a prior run, so the mode is idempotent).
+        empty_leftovers = [
+            p
+            for p in sorted(archive_path.iterdir())
+            if p.is_dir() and not p.name.startswith("_") and _project_dir_is_empty(p)
+        ]
+        if empty_leftovers:
+            print(
+                f"\n{BOLD}{YELLOW}Empty project folders to drain "
+                f"to _DELETE/drift-empty-projects/:{RESET} ({len(empty_leftovers)})"
+            )
+            for p in empty_leftovers[:10]:
+                print(f"  {DIM}{p.name}{RESET}")
+            if len(empty_leftovers) > 10:
+                print(f"  {DIM}... and {len(empty_leftovers) - 10} more{RESET}")
+
+        total_actionable = drift_actionable + len(empty_leftovers)
+
         if args.dry_run:
-            if drift_actionable:
+            if total_actionable:
                 print(f"\n  {YELLOW}Drift apply: skipped (dry run){RESET}")
-        elif drift_actionable:
+        elif total_actionable:
             print()
-            if confirm(
+            prompt = (
                 f"Apply {drift_actionable} drift action"
-                f"{'s' if drift_actionable != 1 else ''}?",
-                args.yes,
-            ):
+                f"{'s' if drift_actionable != 1 else ''}"
+                + (
+                    f" and drain {len(empty_leftovers)} empty folder"
+                    f"{'s' if len(empty_leftovers) != 1 else ''}"
+                    if empty_leftovers
+                    else ""
+                )
+                + "?"
+            )
+            if confirm(prompt, args.yes):
                 drift_report = execute_drift_plan(
                     drift_plan, archive_path, dry_run=False
                 )
-                drift_changed = drift_report.moved > 0 or drift_report.deduped > 0
+                drift_changed = (
+                    drift_report.moved > 0
+                    or drift_report.deduped > 0
+                    or len(drift_report.drained_projects) > 0
+                )
                 report.projects_affected.update(drift_report.touched_projects)
                 print(
                     f"  {GREEN}Moved: {drift_report.moved}{RESET}  "
@@ -1821,7 +1852,7 @@ def main(argv: list[str] | None = None) -> None:
                 )
                 if drift_report.drained_projects:
                     print(
-                        f"  {DIM}Drained empty source projects: "
+                        f"  {DIM}Drained empty project folders: "
                         f"{len(drift_report.drained_projects)}{RESET}"
                     )
             else:
