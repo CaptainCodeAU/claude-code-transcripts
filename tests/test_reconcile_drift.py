@@ -224,6 +224,32 @@ class TestExecuteDriftPlan:
         delete_root = tmp_path / "_DELETE"
         assert any(p.name == PROJ_WRONG for p in delete_root.rglob(PROJ_WRONG))
 
+    def test_drain_ignores_dotfiles_like_ds_store(self, tmp_path):
+        # macOS .DS_Store at project level must not block drain.
+        plan = self._plan_one(tmp_path)
+        (tmp_path / PROJ_WRONG / ".DS_Store").write_bytes(b"\x00" * 8)
+        (tmp_path / PROJ_WRONG / "index.html").write_text("<html></html>")
+        execute_drift_plan(plan, tmp_path, dry_run=False)
+        assert not (tmp_path / PROJ_WRONG).exists()
+
+    def test_drains_leftover_empty_projects_from_prior_run(self, tmp_path):
+        # No drift to merge, but a stale wrong-name folder is sitting empty
+        # (index.html + .DS_Store only). Re-running --merge-drift should drain it
+        # — keeps the mode idempotent / recoverable from earlier partial runs.
+        empty_proj = tmp_path / PROJ_WRONG
+        empty_proj.mkdir()
+        (empty_proj / "index.html").write_text("<html></html>")
+        (empty_proj / ".DS_Store").write_bytes(b"\x00" * 8)
+        # A real, non-empty project must NOT be drained.
+        _make_session(tmp_path, PROJ_CORRECT, U1, CWD_CORRECT)
+
+        report = execute_drift_plan([], tmp_path, dry_run=False)
+        assert not empty_proj.exists()
+        assert any(
+            p.name == PROJ_WRONG for p in (tmp_path / "_DELETE").rglob(PROJ_WRONG)
+        )
+        assert (tmp_path / PROJ_CORRECT / U1).exists()  # real project untouched
+
     def test_partial_drain_leaves_remaining_sessions_in_place(self, tmp_path):
         # Drift one session out, but a sibling under PROJ_WRONG genuinely belongs
         # there (its cwd derives to PROJ_WRONG). Folder must stay.

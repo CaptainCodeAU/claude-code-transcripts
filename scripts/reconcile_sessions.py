@@ -1421,11 +1421,20 @@ def classify_drift(drifted: DriftedSession, archive_path: Path) -> DriftPlanItem
 
 
 def _project_dir_is_empty(project_dir: Path) -> bool:
-    """True if the project dir holds only an ``index.html`` (or nothing)."""
+    """True if the project dir has no session content.
+
+    A drained project keeps its (now stale) ``index.html`` and macOS Finder
+    metadata like ``.DS_Store`` / other dotfiles; those are not session data.
+    Anything else (a UUID session subdir, a page-NNN.html, etc.) means
+    sessions remain and the dir must stay.
+    """
     try:
         for entry in project_dir.iterdir():
-            if entry.name != "index.html":
-                return False
+            if entry.name == "index.html":
+                continue
+            if entry.name.startswith("."):
+                continue
+            return False
         return True
     except OSError:
         return False
@@ -1442,7 +1451,6 @@ def execute_drift_plan(
                 report.conflicts.append(item)
         return report
 
-    drain_candidates: set[Path] = set()
     for item in plan:
         d = item.drifted
         if item.action == DriftAction.MOVE:
@@ -1451,7 +1459,6 @@ def execute_drift_plan(
             report.moved += 1
             report.touched_projects.add(d.current_project)
             report.touched_projects.add(d.correct_project)
-            drain_candidates.add(d.uuid_dir.parent)
         elif item.action == DriftAction.DEDUPE_IDENTICAL:
             move_to_delete_folder(
                 d.uuid_dir,
@@ -1460,13 +1467,22 @@ def execute_drift_plan(
             )
             report.deduped += 1
             report.touched_projects.add(d.current_project)
-            drain_candidates.add(d.uuid_dir.parent)
         elif item.action == DriftAction.CONFLICT:
             report.conflicts.append(item)
 
-    # Soft-delete any source project folder that has been drained empty.
-    for project_dir in drain_candidates:
-        if project_dir.exists() and _project_dir_is_empty(project_dir):
+    # Soft-delete any non-_ project folder that is now empty of session data.
+    # Scans the whole archive (not just drain_candidates) so leftover empties
+    # from a prior incomplete run also get drained — keeps the mode idempotent.
+    seen: set[Path] = set()
+    for project_dir in sorted(archive_path.iterdir()):
+        if (
+            not project_dir.is_dir()
+            or project_dir.name.startswith("_")
+            or project_dir in seen
+        ):
+            continue
+        seen.add(project_dir)
+        if _project_dir_is_empty(project_dir):
             moved_to = move_to_delete_folder(
                 project_dir, archive_path, subfolder="drift-empty-projects"
             )
