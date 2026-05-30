@@ -67,7 +67,28 @@ def test_render_import_pulls_no_cli_or_fetch_deps(module):
     assert not leaked, f"importing {module} leaked layer deps: {sorted(leaked)}"
 
 
+def test_picker_is_stdlib_only():
+    """The interactive picker (questionary replacement) must stay dependency-free."""
+    pulled = _third_party_after_import("claude_code_transcripts.picker")
+    assert not pulled, f"importing picker pulled third-party deps: {pulled}"
+
+
+def test_cli_dropped_click_and_questionary():
+    """The cli layer is now stdlib argparse + the stdlib picker.
+
+    Neither click nor questionary is in the dependency closure any more, so
+    importing cli pulls neither. (httpx imports cleanly without click now that it
+    is uninstalled; httpx itself is still pulled, dropped in BACKLOG 4.4.)
+    """
+    pulled = set(_third_party_after_import("claude_code_transcripts.cli"))
+    assert "click" not in pulled
+    assert "questionary" not in pulled
+
+
 def test_detector_catches_a_deps_carrying_module():
-    """Sanity check: the fence really would fail for the cli module (pulls click)."""
+    """Sanity check: the fence really would fail for a module that pulls a dep.
+
+    cli still legitimately imports httpx, so it is the detector's canary.
+    """
     pulled = _third_party_after_import("claude_code_transcripts.cli")
-    assert "click" in pulled
+    assert "httpx" in pulled

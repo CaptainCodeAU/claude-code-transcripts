@@ -975,7 +975,7 @@ class TestCreateGist:
     def test_creates_gist_successfully(self, output_dir, monkeypatch):
         """Test successful gist creation."""
         import subprocess
-        import click
+        from claude_code_transcripts.cli import CliError
 
         # Create test HTML files
         (output_dir / "index.html").write_text(
@@ -1005,9 +1005,9 @@ class TestCreateGist:
 
     def test_raises_on_no_html_files(self, output_dir):
         """Test that error is raised when no HTML files exist."""
-        import click
+        from claude_code_transcripts.cli import CliError
 
-        with pytest.raises(click.ClickException) as exc_info:
+        with pytest.raises(CliError) as exc_info:
             create_gist(output_dir)
 
         assert "No HTML files found" in str(exc_info.value)
@@ -1015,7 +1015,7 @@ class TestCreateGist:
     def test_raises_on_gh_cli_error(self, output_dir, monkeypatch):
         """Test that error is raised when gh CLI fails."""
         import subprocess
-        import click
+        from claude_code_transcripts.cli import CliError
 
         # Create test HTML file
         (output_dir / "index.html").write_text(
@@ -1032,7 +1032,7 @@ class TestCreateGist:
 
         monkeypatch.setattr(subprocess, "run", mock_run)
 
-        with pytest.raises(click.ClickException) as exc_info:
+        with pytest.raises(CliError) as exc_info:
             create_gist(output_dir)
 
         assert "Failed to create gist" in str(exc_info.value)
@@ -1040,7 +1040,7 @@ class TestCreateGist:
     def test_raises_on_gh_not_found(self, output_dir, monkeypatch):
         """Test that error is raised when gh CLI is not installed."""
         import subprocess
-        import click
+        from claude_code_transcripts.cli import CliError
 
         # Create test HTML file
         (output_dir / "index.html").write_text(
@@ -1053,7 +1053,7 @@ class TestCreateGist:
 
         monkeypatch.setattr(subprocess, "run", mock_run)
 
-        with pytest.raises(click.ClickException) as exc_info:
+        with pytest.raises(CliError) as exc_info:
             create_gist(output_dir)
 
         assert "gh CLI not found" in str(exc_info.value)
@@ -1064,7 +1064,7 @@ class TestSessionGistOption:
 
     def test_session_gist_creates_gist(self, monkeypatch, tmp_path):
         """Test that session --gist creates a gist."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
         import subprocess
 
@@ -1102,7 +1102,7 @@ class TestSessionGistOption:
 
     def test_session_gist_with_output_dir(self, monkeypatch, output_dir):
         """Test that session --gist with -o uses specified directory."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
         import subprocess
 
@@ -1401,7 +1401,7 @@ class TestSessionJsonOption:
 
     def test_session_json_copies_file(self, output_dir):
         """Test that session --json copies the JSON file to output."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
 
         fixture_path = Path(__file__).parent / "sample_session.json"
@@ -1420,7 +1420,7 @@ class TestSessionJsonOption:
 
     def test_session_json_preserves_original_name(self, output_dir):
         """Test that --json preserves the original filename."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
 
         fixture_path = Path(__file__).parent / "sample_session.json"
@@ -1438,7 +1438,7 @@ class TestSessionJsonOption:
 
     def test_session_json_included_by_default(self, output_dir):
         """Without any flag, json subcommand copies the source by default."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
 
         fixture_path = Path(__file__).parent / "sample_session.json"
@@ -1454,7 +1454,7 @@ class TestSessionJsonOption:
 
     def test_session_no_json_suppresses_copy(self, output_dir):
         """Passing --no-json suppresses the default source copy."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
 
         fixture_path = Path(__file__).parent / "sample_session.json"
@@ -1474,7 +1474,7 @@ class TestImportJsonOption:
 
     def test_import_json_saves_session_data(self, httpx_mock, output_dir):
         """Test that import --json saves the session JSON."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
 
         # Load sample session to mock API response
@@ -1516,7 +1516,7 @@ class TestImportJsonOption:
 
     def test_import_json_included_by_default(self, httpx_mock, output_dir):
         """Without any flag, web subcommand saves the fetched session by default."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
 
         fixture_path = Path(__file__).parent / "sample_session.json"
@@ -1549,7 +1549,7 @@ class TestImportJsonOption:
 
     def test_import_no_json_suppresses_copy(self, httpx_mock, output_dir):
         """Passing --no-json suppresses the default JSON save."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
 
         fixture_path = Path(__file__).parent / "sample_session.json"
@@ -1586,7 +1586,7 @@ class TestImportGistOption:
 
     def test_import_gist_creates_gist(self, httpx_mock, monkeypatch, tmp_path):
         """Test that import --gist creates a gist."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
         import subprocess
 
@@ -1644,7 +1644,7 @@ class TestVersionOption:
     def test_version_long_flag(self):
         """Test that --version shows version info."""
         import importlib.metadata
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
 
         runner = CliRunner()
@@ -1657,7 +1657,7 @@ class TestVersionOption:
     def test_version_short_flag(self):
         """Test that -v shows version info."""
         import importlib.metadata
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
 
         runner = CliRunner()
@@ -1673,7 +1673,7 @@ class TestOpenOption:
 
     def test_session_open_calls_webbrowser(self, output_dir, monkeypatch):
         """Test that session --open opens the browser."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
 
         fixture_path = Path(__file__).parent / "sample_session.json"
@@ -1700,7 +1700,7 @@ class TestOpenOption:
 
     def test_import_open_calls_webbrowser(self, httpx_mock, output_dir, monkeypatch):
         """Test that import --open opens the browser."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
 
         # Load sample session to mock API response
@@ -1945,9 +1945,8 @@ class TestLocalSessionCLI:
 
     def test_local_shows_sessions_and_converts(self, tmp_path, monkeypatch):
         """Test that 'local' command shows sessions and converts selected one."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
-        import questionary
 
         # Create mock .claude/projects structure
         projects_dir = tmp_path / ".claude" / "projects" / "test-project"
@@ -1970,7 +1969,10 @@ class TestLocalSessionCLI:
             def ask(self):
                 return session_file
 
-        monkeypatch.setattr(questionary, "select", MockSelect)
+        monkeypatch.setattr(
+            "claude_code_transcripts.picker.select_from_list",
+            lambda prompt, choices: MockSelect().ask(),
+        )
 
         runner = CliRunner()
         result = runner.invoke(cli, ["local"])
@@ -1981,9 +1983,8 @@ class TestLocalSessionCLI:
 
     def test_no_args_runs_local_command(self, tmp_path, monkeypatch):
         """Test that running with no arguments runs local command."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
-        import questionary
 
         # Create mock .claude/projects structure
         projects_dir = tmp_path / ".claude" / "projects" / "test-project"
@@ -2006,7 +2007,10 @@ class TestLocalSessionCLI:
             def ask(self):
                 return session_file
 
-        monkeypatch.setattr(questionary, "select", MockSelect)
+        monkeypatch.setattr(
+            "claude_code_transcripts.picker.select_from_list",
+            lambda prompt, choices: MockSelect().ask(),
+        )
 
         runner = CliRunner()
         result = runner.invoke(cli, [])
@@ -2016,9 +2020,8 @@ class TestLocalSessionCLI:
 
     def test_local_handles_cancelled_selection(self, tmp_path, monkeypatch):
         """Test that local command handles cancelled selection gracefully."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
-        import questionary
 
         # Create mock .claude/projects structure
         projects_dir = tmp_path / ".claude" / "projects" / "test-project"
@@ -2041,7 +2044,10 @@ class TestLocalSessionCLI:
             def ask(self):
                 return None
 
-        monkeypatch.setattr(questionary, "select", MockSelect)
+        monkeypatch.setattr(
+            "claude_code_transcripts.picker.select_from_list",
+            lambda prompt, choices: MockSelect().ask(),
+        )
 
         runner = CliRunner()
         result = runner.invoke(cli, ["local"])
@@ -2051,9 +2057,8 @@ class TestLocalSessionCLI:
 
     def test_local_json_included_by_default(self, tmp_path, monkeypatch):
         """Without any flag, local subcommand copies the source by default."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
-        import questionary
 
         projects_dir = tmp_path / ".claude" / "projects" / "test-project"
         projects_dir.mkdir(parents=True)
@@ -2072,7 +2077,10 @@ class TestLocalSessionCLI:
             def ask(self):
                 return session_file
 
-        monkeypatch.setattr(questionary, "select", MockSelect)
+        monkeypatch.setattr(
+            "claude_code_transcripts.picker.select_from_list",
+            lambda prompt, choices: MockSelect().ask(),
+        )
 
         output_dir = tmp_path / "output"
         runner = CliRunner()
@@ -2083,9 +2091,8 @@ class TestLocalSessionCLI:
 
     def test_local_no_json_suppresses_copy(self, tmp_path, monkeypatch):
         """Passing --no-json suppresses the default source copy."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
-        import questionary
 
         projects_dir = tmp_path / ".claude" / "projects" / "test-project"
         projects_dir.mkdir(parents=True)
@@ -2104,7 +2111,10 @@ class TestLocalSessionCLI:
             def ask(self):
                 return session_file
 
-        monkeypatch.setattr(questionary, "select", MockSelect)
+        monkeypatch.setattr(
+            "claude_code_transcripts.picker.select_from_list",
+            lambda prompt, choices: MockSelect().ask(),
+        )
 
         output_dir = tmp_path / "output"
         runner = CliRunner()
@@ -2119,7 +2129,7 @@ class TestOutputAutoOption:
 
     def test_json_output_auto_creates_subdirectory(self, tmp_path):
         """Test that json -a creates output subdirectory named after file stem."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
 
         fixture_path = Path(__file__).parent / "sample_session.json"
@@ -2138,7 +2148,7 @@ class TestOutputAutoOption:
 
     def test_json_output_auto_uses_cwd_when_no_output(self, tmp_path, monkeypatch):
         """Test that json -a uses current directory when -o not specified."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
         import os
 
@@ -2161,7 +2171,7 @@ class TestOutputAutoOption:
 
     def test_json_output_auto_no_browser_open(self, tmp_path, monkeypatch):
         """Test that json -a does not auto-open browser."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
 
         fixture_path = Path(__file__).parent / "sample_session.json"
@@ -2186,9 +2196,8 @@ class TestOutputAutoOption:
 
     def test_local_output_auto_creates_subdirectory(self, tmp_path, monkeypatch):
         """Test that local -a creates output subdirectory named after file stem."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
-        import questionary
 
         # Create mock .claude/projects structure
         projects_dir = tmp_path / ".claude" / "projects" / "test-project"
@@ -2214,7 +2223,10 @@ class TestOutputAutoOption:
             def ask(self):
                 return session_file
 
-        monkeypatch.setattr(questionary, "select", MockSelect)
+        monkeypatch.setattr(
+            "claude_code_transcripts.picker.select_from_list",
+            lambda prompt, choices: MockSelect().ask(),
+        )
 
         runner = CliRunner()
         result = runner.invoke(cli, ["local", "-a", "-o", str(output_parent)])
@@ -2227,7 +2239,7 @@ class TestOutputAutoOption:
 
     def test_web_output_auto_creates_subdirectory(self, httpx_mock, tmp_path):
         """Test that web -a creates output subdirectory named after session ID."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
 
         # Load sample session to mock API response
@@ -2264,7 +2276,7 @@ class TestOutputAutoOption:
 
     def test_output_auto_with_jsonl_uses_stem(self, tmp_path, monkeypatch):
         """Test that -a with JSONL file uses file stem (without .jsonl extension)."""
-        from click.testing import CliRunner
+        from conftest import CliRunner
         from claude_code_transcripts import cli
 
         # Create a JSONL file

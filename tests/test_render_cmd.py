@@ -1,6 +1,6 @@
 """Tests for the `render` subcommand (the background hook child)."""
 
-from click.testing import CliRunner
+from conftest import CliRunner
 
 from claude_code_transcripts import cli, notify
 

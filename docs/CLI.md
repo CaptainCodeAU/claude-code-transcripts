@@ -31,6 +31,8 @@ claude-code-transcripts [local] [OPTIONS]
 
 Pick a session from `~/.claude/projects/` via an interactive picker and convert it. This is the **default** subcommand: it runs when you invoke `claude-code-transcripts` with no subcommand.
 
+> The picker is a built-in, dependency-free arrow-key list: Up/Down (or `k`/`j`) to move, Enter to select, `q` or Esc to cancel. It is POSIX-only and requires a real terminal (there is no non-TTY fallback). The `web` picker behaves the same.
+
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `-o, --output PATH` | path | unset (temp dir, auto-open) | Output directory for the generated HTML. |
