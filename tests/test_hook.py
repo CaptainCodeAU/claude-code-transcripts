@@ -78,6 +78,49 @@ def test_hook_skips_unchanged_session(tmp_path, monkeypatch, captured):
     assert spawns == []
 
 
+def test_hook_opens_folder_on_skip_when_env_set(tmp_path, monkeypatch, captured):
+    reports, spawns = captured
+    export_dir = tmp_path / "archive"
+    monkeypatch.setenv("TRANSCRIPT_EXPORT_DIR", str(export_dir))
+    monkeypatch.setenv("TRANSCRIPT_OPEN_FOLDER", "1")
+    monkeypatch.delenv("SKIP_SESSION_END_HOOK", raising=False)
+    opened = []
+    monkeypatch.setattr(notify, "open_folder", lambda p: opened.append(p))
+
+    transcript = tmp_path / "sess123.jsonl"
+    transcript.write_text("payload\n")
+    session_dir = export_dir / "TestOwner-myproj" / "sess123"
+    session_dir.mkdir(parents=True)
+    (session_dir / "index.html").write_text("x")
+    (session_dir / "sess123.jsonl").write_text(transcript.read_text())
+
+    result = CliRunner().invoke(cli, ["hook"], input=_payload(transcript))
+    assert result.exit_code == 0
+    assert "skipped" in _status(reports)
+    assert opened == [str(session_dir)]
+
+
+def test_hook_skip_does_not_open_folder_when_env_unset(tmp_path, monkeypatch, captured):
+    reports, _ = captured
+    export_dir = tmp_path / "archive"
+    monkeypatch.setenv("TRANSCRIPT_EXPORT_DIR", str(export_dir))
+    monkeypatch.delenv("SKIP_SESSION_END_HOOK", raising=False)
+    monkeypatch.delenv("TRANSCRIPT_OPEN_FOLDER", raising=False)
+    opened = []
+    monkeypatch.setattr(notify, "open_folder", lambda p: opened.append(p))
+
+    transcript = tmp_path / "sess123.jsonl"
+    transcript.write_text("payload\n")
+    session_dir = export_dir / "TestOwner-myproj" / "sess123"
+    session_dir.mkdir(parents=True)
+    (session_dir / "index.html").write_text("x")
+    (session_dir / "sess123.jsonl").write_text(transcript.read_text())
+
+    CliRunner().invoke(cli, ["hook"], input=_payload(transcript))
+    assert "skipped" in _status(reports)
+    assert opened == []
+
+
 def test_hook_respects_skip_env(tmp_path, monkeypatch, captured):
     reports, spawns = captured
     monkeypatch.setenv("SKIP_SESSION_END_HOOK", "1")

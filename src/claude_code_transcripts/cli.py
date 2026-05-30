@@ -675,6 +675,11 @@ def render_cmd(jsonl_file, output, repo):
         )
         raise
     click.echo(f"Rendered: {output.resolve()}")
+    # Opt-in: reveal the folder now that HTML is on disk. Doing this from the
+    # render child (not the hook) avoids a race where the folder would open
+    # before the HTML had been written.
+    if os.environ.get("TRANSCRIPT_OPEN_FOLDER") == "1":
+        notify.open_folder(str(output.resolve()))
 
 
 @cli.command("hook")
@@ -721,6 +726,9 @@ def hook_cmd():
             source,
             payload_cwd,
         )
+        # On skip the HTML already exists; open it now (the render child won't run).
+        if os.environ.get("TRANSCRIPT_OPEN_FOLDER") == "1":
+            notify.open_folder(session_dir)
         return
 
     try:

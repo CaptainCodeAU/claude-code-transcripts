@@ -81,3 +81,32 @@ def test_report_error_notifies_failure(monkeypatch, fake_popen, tmp_path):
     notify.report("sid", "Proj", "error", error="boom")
     osascripts = [c for c in fake_popen.calls if c[0][0] == "osascript"]
     assert any("failed" in c[0][2].lower() for c in osascripts)
+
+
+# ---- open_folder ----
+
+
+def test_open_folder_macos_uses_open(monkeypatch, fake_popen, tmp_path):
+    monkeypatch.setattr(notify, "IS_MACOS", True)
+    notify.open_folder(str(tmp_path))
+    assert len(fake_popen.calls) == 1
+    args, _ = fake_popen.calls[0]
+    assert args == ["open", str(tmp_path)]
+
+
+def test_open_folder_linux_uses_xdg_open(monkeypatch, fake_popen, tmp_path):
+    monkeypatch.setattr(notify, "IS_MACOS", False)
+    notify.open_folder(str(tmp_path))
+    assert len(fake_popen.calls) == 1
+    args, _ = fake_popen.calls[0]
+    assert args == ["xdg-open", str(tmp_path)]
+
+
+def test_open_folder_swallows_oserror(monkeypatch, tmp_path):
+    def boom(*a, **kw):
+        raise OSError("no such command")
+
+    monkeypatch.setattr(subprocess, "Popen", boom)
+    monkeypatch.setattr(notify, "IS_MACOS", True)
+    # Must not raise.
+    notify.open_folder(str(tmp_path))

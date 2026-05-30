@@ -35,6 +35,20 @@ def notify_desktop(title, message):
         pass
 
 
+def open_folder(path):
+    """Best-effort: reveal *path* in the platform file manager.
+
+    macOS ``open`` / Linux ``xdg-open``. Non-blocking (``Popen``) and silent on
+    OSError (e.g. missing binary), so a SessionEnd hook never fails because the
+    file manager is unavailable.
+    """
+    try:
+        cmd = ["open", str(path)] if IS_MACOS else ["xdg-open", str(path)]
+        subprocess.Popen(cmd)
+    except OSError:
+        pass
+
+
 def notify_voice(message):
     """Best-effort voice notification. Opt-in via TRANSCRIPT_VOICE_URL."""
     url = os.environ.get("TRANSCRIPT_VOICE_URL")
