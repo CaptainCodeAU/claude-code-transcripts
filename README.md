@@ -10,8 +10,9 @@ Convert Claude Code session files (JSON or JSONL) to clean, mobile-friendly HTML
 
 ## Fork enhancements
 
-Features added in this fork beyond the upstream project:
+Features added in this fork beyond the upstream project.
 
+**Rendering and UX:**
 - **Dark mode by default** with a floating light/dark toggle on every page
 - **Copy-to-clipboard buttons** on all blocks (code, tool inputs/outputs, text, diffs, commit cards, thinking, and full messages)
 - **Wider responsive layout** (1400px max-width with breakpoints at 1024px and 600px)
@@ -19,8 +20,13 @@ Features added in this fork beyond the upstream project:
 - **`--json/--no-json` flag** across all subcommands (default: on) to include/suppress source file archival
 - **`<task-notification>` fix** preventing background task completions from rendering as user messages
 - **Batch archive source inclusion** via the `all` command with `--json/--no-json` support
-- **Companion plugin** for automatic session-end export via [claude-transcript-exporter](https://github.com/CaptainCodeAU/gz-claude-code-plugins)
-- **Reconciliation script** (`scripts/reconcile_sessions.py`) to organize orphan UUID session folders into project directories with grouped move plan, per-group confirmations, soft-delete to `_DELETE/`, and smart duplicate detection
+
+**Architecture and automation (0.7):**
+- **Layered package** with a stdlib-only core: importing `claude_code_transcripts.core.*` pulls zero third-party deps (locked by a fence test), so a future stdlib-only plugin shim can share naming and resolution logic without dragging in jinja2 / markdown / click / httpx / questionary
+- **SessionEnd capture pipeline** via the new [`hook`](docs/CLI.md#hook) and [`render`](docs/CLI.md#render) subcommands: cwd-first project-name resolution, idempotent skip on unchanged sessions, fast capture, and a detached background render so session shutdown is never blocked
+- **Env-driven configuration** for the pipeline: `TRANSCRIPT_EXPORT_DIR`, opt-in `TRANSCRIPT_VOICE_URL` / `TRANSCRIPT_VOICE_ID`, `TRANSCRIPT_OPEN_FOLDER`, `SKIP_SESSION_END_HOOK` (see [`docs/CLI.md#environment-variables`](docs/CLI.md#environment-variables))
+- **Companion plugin** for automatic session-end export via [claude-transcript-exporter](https://github.com/CaptainCodeAU/gz-claude-code-plugins): now a thin wrapper that pipes the SessionEnd payload to `claude-code-transcripts hook` with no business logic of its own, so naming/resolve/skip/render stay in one place and can't drift
+- **Reconciliation script** (`scripts/reconcile_sessions.py`) with two modes: orphan handling (folds UUID folders into projects) and `--merge-drift` (re-derives the correct project from each session's JSONL `cwd`, merges drifted project folders, soft-deletes byte-equal duplicates to `_DELETE/`)
 
 ## Installation
 
@@ -37,13 +43,15 @@ uvx claude-code-transcripts --help
 
 This tool converts Claude Code session files into browseable multi-page HTML transcripts.
 
-There are four commands available, plus a standalone reconciliation script:
+Six subcommands plus a standalone reconciliation script. The first four are interactive; `hook` and `render` are the automated SessionEnd capture pipeline, normally invoked by the companion plugin rather than by you directly.
 
 - `local` (default) - select from local Claude Code sessions stored in `~/.claude/projects`
 - `web` - select from web sessions via the Claude API
 - `json` - convert a specific JSON or JSONL session file
 - `all` - convert all local sessions to a browsable HTML archive
-- `scripts/reconcile_sessions.py` - organize orphan session folders into project directories
+- `hook` - capture a session at SessionEnd, reading the JSON payload from stdin
+- `render` - render an already-filed session's HTML (the background child `hook` spawns; also usable standalone)
+- `scripts/reconcile_sessions.py` - organize orphan and drifted session folders
 
 The quickest way to view a recent local session:
 
@@ -224,9 +232,27 @@ claude-code-transcripts all -o ./my-archive
 claude-code-transcripts all --include-agents
 ```
 
-### Reconciling orphan sessions
+### Automatic export on session end
 
-If your archive has UUID-named session folders sitting at the root level (e.g., from the older `claude-transcript-exporter` plugin or manual exports), the reconciliation script organizes them into their correct project directories:
+The `hook` and `render` subcommands together form a SessionEnd capture pipeline:
+
+- `hook` reads a SessionEnd JSON payload from stdin, resolves the correct project name from the session's `cwd` (cwd-first, lossless, with the encoded `~/.claude/projects/` folder name as a fallback), files the raw `.jsonl` into the archive, fires desktop and (opt-in) voice notifications, then spawns `render` as a detached background process. Returns in milliseconds, so session shutdown is never blocked.
+- `render` writes the HTML pages after the JSONL is filed. Normally spawned by `hook`, but works fine standalone for re-rendering a single session.
+
+The pipeline is configured entirely via environment variables. The two most common to set:
+
+- `TRANSCRIPT_EXPORT_DIR` - archive root (default: `~/claude-code-transcripts`).
+- `TRANSCRIPT_OPEN_FOLDER=1` - reveal the session folder in the platform file manager after HTML is on disk (`open` on macOS, `xdg-open` on Linux).
+
+The full list (including the opt-in `TRANSCRIPT_VOICE_URL` / `TRANSCRIPT_VOICE_ID` and the `SKIP_SESSION_END_HOOK` killswitch) is documented in [`docs/CLI.md#environment-variables`](docs/CLI.md#environment-variables). The pipeline contract (stdin payload schema, resolution order, skip rule, output layout) is in [`docs/CLI.md#hook`](docs/CLI.md#hook).
+
+The natural way to wire this into Claude Code is the [companion plugin](https://github.com/CaptainCodeAU/gz-claude-code-plugins), which sets your env and pipes the SessionEnd payload to `claude-code-transcripts hook`. The plugin is a thin wrapper with no business logic, so the flagship CLI stays the single source of truth for naming, resolution, skip rules, notifications, and rendering.
+
+### Reconciling orphan and drifted sessions
+
+The reconciliation script handles two cleanup cases on a transcript archive.
+
+**Orphan folders** (default mode): UUID-named session folders sitting at the archive root (from older plugin versions or manual exports) get folded into their correct project directories.
 
 ```bash
 # Preview what would happen (safe, changes nothing):
@@ -247,13 +273,23 @@ The script shows a move plan with action-verb headings, then prompts for each gr
 - **Move N duplicates to _DELETE?** -- duplicate orphans sent to `_DELETE/duplicates/`
 - **Move N empty/unrecognized to _DELETE?** -- empty or non-session folders
 
-Each group has its own confirmation prompt. Declining one skips it and continues to the next. Nothing is permanently deleted; unwanted folders are soft-deleted to `_DELETE/` subdirectories. Session ages are derived from JSONL internal timestamps, not file modification dates. Reindexing only runs when the archive actually changed.
+**Drifted folders** (`--merge-drift`): sessions sitting in the wrong project folder (e.g., because an older buggy resolver produced a different display name) get re-routed using the session's own `cwd`. For each session: MOVE if the correct project has no collision; DEDUPE_IDENTICAL (soft-delete to `_DELETE/drift-dedupe/`) if a byte-equal copy already exists in the correct project; CONFLICT (untouched, reported) if the JSONL contents differ. Project folders left empty by the merge get drained to `_DELETE/drift-empty-projects/`.
 
-See [`docs/CLI.md#reconcile`](docs/CLI.md#reconcile) for the full flag reference and [`docs/RECONCILE_FLOW.md`](docs/RECONCILE_FLOW.md) for decision flowcharts.
+```bash
+# Preview the drift plan (no changes):
+uv run python scripts/reconcile_sessions.py --merge-drift --dry-run ~/CODE/my-claude-code-transcripts/
+
+# Apply (one combined confirmation for moves + dedupes + drains):
+uv run python scripts/reconcile_sessions.py --merge-drift --yes ~/CODE/my-claude-code-transcripts/
+```
+
+Each group has its own confirmation prompt. Declining one skips it and continues to the next. **Nothing is permanently deleted**; unwanted folders are soft-deleted to `_DELETE/` subdirectories (recoverable). Session ages are derived from JSONL internal timestamps, not file modification dates. Reindexing only runs when the archive actually changed.
+
+See [`docs/CLI.md#reconcile`](docs/CLI.md#reconcile) for the full flag reference (including `--fix-mtimes`) and the drift subsection, and [`docs/RECONCILE_FLOW.md`](docs/RECONCILE_FLOW.md) for decision flowcharts.
 
 ## Related projects
 
-- [gz-claude-code-plugins](https://github.com/CaptainCodeAU/gz-claude-code-plugins) contains the **claude-transcript-exporter** plugin, which automatically runs this tool when a Claude Code session ends. Install it once and every session's transcript is exported to your archive directory without manual invocation.
+- [gz-claude-code-plugins](https://github.com/CaptainCodeAU/gz-claude-code-plugins) contains the **claude-transcript-exporter** plugin: a thin SessionEnd wrapper that pipes Claude Code's hook payload to `claude-code-transcripts hook`. The plugin carries no business logic of its own (this flagship CLI owns project-name resolution, the idempotency skip, JSONL filing, notifications, and the detached HTML render), so install it once and every session's transcript is exported to your archive directory without manual invocation, with nothing to drift out of sync.
 
 ## Development
 
