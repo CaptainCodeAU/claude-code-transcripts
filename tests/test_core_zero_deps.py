@@ -67,6 +67,12 @@ def test_render_import_pulls_no_cli_or_fetch_deps(module):
     assert not leaked, f"importing {module} leaked layer deps: {sorted(leaked)}"
 
 
+def test_picker_is_stdlib_only():
+    """The interactive picker (questionary replacement) must stay dependency-free."""
+    pulled = _third_party_after_import("claude_code_transcripts.picker")
+    assert not pulled, f"importing picker pulled third-party deps: {pulled}"
+
+
 def test_detector_catches_a_deps_carrying_module():
     """Sanity check: the fence really would fail for the cli module (pulls click)."""
     pulled = _third_party_after_import("claude_code_transcripts.cli")
