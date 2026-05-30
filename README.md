@@ -30,13 +30,36 @@ Features added in this fork beyond the upstream project.
 
 ## Installation
 
-Install this tool using `uv`:
+> **PyPI hosts the upstream version, not this fork.** `uv tool install claude-code-transcripts` (without a URL) pulls the original simonw release from PyPI, without any of the fork enhancements listed above (the 0.7 capture pipeline, drift remediation, layered architecture, etc.). Install from the git URL below instead.
+
+Install the latest tagged release of this fork:
+
 ```bash
-uv tool install claude-code-transcripts
+uv tool install "git+https://github.com/CaptainCodeAU/claude-code-transcripts.git@0.7"
 ```
-Or run it without installing:
+
+Or track HEAD on `master`:
+
 ```bash
-uvx claude-code-transcripts --help
+uv tool install "git+https://github.com/CaptainCodeAU/claude-code-transcripts.git"
+```
+
+Upgrade a previously git-installed copy (re-fetches the same ref you installed from):
+
+```bash
+uv tool upgrade claude-code-transcripts
+```
+
+To move between tagged releases (e.g., from `0.7` to a later `0.8`), reinstall with the new ref:
+
+```bash
+uv tool install --reinstall "git+https://github.com/CaptainCodeAU/claude-code-transcripts.git@0.8"
+```
+
+Or run it without installing:
+
+```bash
+uvx --from "git+https://github.com/CaptainCodeAU/claude-code-transcripts.git@0.7" claude-code-transcripts --help
 ```
 
 ## Usage
