@@ -1,5 +1,7 @@
 # Meta Prompt: claude-code-transcripts Project Context
 
+> **SUPERSEDED -- historical v1.** This is the original project-context prompt. It predates the 0.7 redesign and describes the old stack (Click CLI framework, 4 subcommands, monolithic `__init__.py`, no `hook`/`render` capture pipeline, no layered package). For current working context, use [`META_PROMPT_v2.md`](META_PROMPT_v2.md). This file is retained for history; do not use it for onboarding.
+
 Paste this into a new Claude Code session to get full working context for this project without needing prior conversation history.
 
 ---

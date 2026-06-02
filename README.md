@@ -22,11 +22,13 @@ Features added in this fork beyond the upstream project.
 - **Batch archive source inclusion** via the `all` command with `--json/--no-json` support
 
 **Architecture and automation (0.7):**
-- **Layered package** with a stdlib-only core: importing `claude_code_transcripts.core.*` pulls zero third-party deps (locked by a fence test), so a future stdlib-only plugin shim can share naming and resolution logic without dragging in jinja2 / markdown / httpx. The CLI itself is stdlib `argparse` plus a stdlib arrow-key session picker, so it no longer depends on `click` / `click-default-group` / `questionary`
+- **Layered package** with a stdlib-only core: importing `claude_code_transcripts.core.*` pulls zero third-party deps (locked by a fence test), so a future stdlib-only plugin shim can share naming and resolution logic without dragging in jinja2 / markdown / httpx
 - **SessionEnd capture pipeline** via the new [`hook`](docs/CLI.md#hook) and [`render`](docs/CLI.md#render) subcommands: cwd-first project-name resolution, idempotent skip on unchanged sessions, fast capture, and a detached background render so session shutdown is never blocked
 - **Env-driven configuration** for the pipeline: `TRANSCRIPT_EXPORT_DIR`, opt-in `TRANSCRIPT_VOICE_URL` / `TRANSCRIPT_VOICE_ID`, `TRANSCRIPT_OPEN_FOLDER`, `SKIP_SESSION_END_HOOK` (see [`docs/CLI.md#environment-variables`](docs/CLI.md#environment-variables))
 - **Companion plugin** for automatic session-end export via [claude-transcript-exporter](https://github.com/CaptainCodeAU/gz-claude-code-plugins): now a thin wrapper that pipes the SessionEnd payload to `claude-code-transcripts hook` with no business logic of its own, so naming/resolve/skip/render stay in one place and can't drift
 - **Reconciliation script** (`scripts/reconcile_sessions.py`) with two modes: orphan handling (folds UUID folders into projects) and `--merge-drift` (re-derives the correct project from each session's JSONL `cwd`, merges drifted project folders, soft-deletes byte-equal duplicates to `_DELETE/`)
+
+> **Note on the stdlib CLI.** The stdlib `argparse` CLI and arrow-key session picker (which drop the `click` / `click-default-group` / `questionary` dependencies) landed *after* the `0.7` tag and are **merged to `master`** (PR #17, 2026-05-30), but not yet in a tagged release. The installable `0.7` release still uses `click` / `questionary`; install from `master` (HEAD) to get the stdlib CLI, or wait for the next tag.
 
 ## Installation
 
