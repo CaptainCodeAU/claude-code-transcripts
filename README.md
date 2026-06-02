@@ -28,7 +28,7 @@ Features added in this fork beyond the upstream project.
 - **Companion plugin** for automatic session-end export via [claude-transcript-exporter](https://github.com/CaptainCodeAU/gz-claude-code-plugins): now a thin wrapper that pipes the SessionEnd payload to `claude-code-transcripts hook` with no business logic of its own, so naming/resolve/skip/render stay in one place and can't drift
 - **Reconciliation script** (`scripts/reconcile_sessions.py`) with two modes: orphan handling (folds UUID folders into projects) and `--merge-drift` (re-derives the correct project from each session's JSONL `cwd`, merges drifted project folders, soft-deletes byte-equal duplicates to `_DELETE/`)
 
-> **Note on the stdlib CLI.** The stdlib `argparse` CLI and arrow-key session picker (which drop the `click` / `click-default-group` / `questionary` dependencies) landed *after* the `0.7` tag and are **merged to `master`** (PR #17, 2026-05-30), but not yet in a tagged release. The installable `0.7` release still uses `click` / `questionary`; install from `master` (HEAD) to get the stdlib CLI, or wait for the next tag.
+> **Note on the stdlib CLI.** As of **`0.8`**, the CLI is stdlib `argparse` plus a built-in arrow-key session picker, dropping the `click` / `click-default-group` / `questionary` dependencies. Releases `0.7` and earlier still use `click` / `questionary`, so install `@0.8` (or later) to get the stdlib CLI.
 
 ## Installation
 
@@ -37,7 +37,7 @@ Features added in this fork beyond the upstream project.
 Install the latest tagged release of this fork:
 
 ```bash
-uv tool install "git+https://github.com/CaptainCodeAU/claude-code-transcripts.git@0.7"
+uv tool install "git+https://github.com/CaptainCodeAU/claude-code-transcripts.git@0.8"
 ```
 
 Or track HEAD on `master`:
@@ -52,16 +52,16 @@ Upgrade a previously git-installed copy (re-fetches the same ref you installed f
 uv tool upgrade claude-code-transcripts
 ```
 
-To move between tagged releases (e.g., from `0.7` to a later `0.8`), reinstall with the new ref:
+To move between tagged releases (e.g., from `0.8` to a later `0.9`), reinstall with the new ref:
 
 ```bash
-uv tool install --reinstall "git+https://github.com/CaptainCodeAU/claude-code-transcripts.git@0.8"
+uv tool install --reinstall "git+https://github.com/CaptainCodeAU/claude-code-transcripts.git@0.9"
 ```
 
 Or run it without installing:
 
 ```bash
-uvx --from "git+https://github.com/CaptainCodeAU/claude-code-transcripts.git@0.7" claude-code-transcripts --help
+uvx --from "git+https://github.com/CaptainCodeAU/claude-code-transcripts.git@0.8" claude-code-transcripts --help
 ```
 
 ## Usage
