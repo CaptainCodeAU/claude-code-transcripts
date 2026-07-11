@@ -5,7 +5,8 @@ description = "Convert Claude Code session files to HTML transcripts"
 readme = "README.md"
 license = "Apache-2.0"
 authors = [
-    { name = "Simon Willison" }
+    { name = "CaptainCodeAU", email = "69835039+CaptainCodeAU@users.noreply.github.com" },
+    { name = "Simon Willison" },
 ]
 requires-python = ">=3.10"
 dependencies = [
@@ -16,10 +17,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/simonw/claude-code-transcripts"
-Changelog = "https://github.com/simonw/claude-code-transcripts/releases"
-Issues = "https://github.com/simonw/claude-code-transcripts/issues"
-CI = "https://github.com/simonw/claude-code-transcripts/actions"
+Homepage = "https://github.com/CaptainCodeAU/claude-code-transcripts"
+Changelog = "https://github.com/CaptainCodeAU/claude-code-transcripts/releases"
+Issues = "https://github.com/CaptainCodeAU/claude-code-transcripts/issues"
+CI = "https://github.com/CaptainCodeAU/claude-code-transcripts/actions"
 
 [project.scripts]
 claude-code-transcripts = "claude_code_transcripts:main"
