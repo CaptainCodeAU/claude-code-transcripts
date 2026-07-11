@@ -9,8 +9,12 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      # windows-latest dropped: the interactive session picker (picker.py) is
+      # POSIX-only (termios/tty), so the package does not import on Windows.
+      # fail-fast disabled so one job's failure does not cancel the whole matrix.
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
     - uses: actions/checkout@v6
