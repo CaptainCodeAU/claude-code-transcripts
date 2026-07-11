@@ -17,7 +17,7 @@ Features added in this fork beyond the upstream project.
 - **Copy-to-clipboard buttons** on all blocks (code, tool inputs/outputs, text, diffs, commit cards, thinking, and full messages)
 - **Wider responsive layout** (1400px max-width with breakpoints at 1024px and 600px)
 - **Markdown rendering** in assistant and user messages (list preprocessing, GFM strikethrough/task lists, CSS for headings/tables/blockquotes/lists)
-- **`--json/--no-json` flag** across all subcommands (default: on) to include/suppress source file archival
+- **`--json/--no-json` flag** across the four conversion subcommands (`local`, `json`, `web`, `all`; default: on) to include/suppress source file archival
 - **`<task-notification>` fix** preventing background task completions from rendering as user messages
 - **Batch archive source inclusion** via the `all` command with `--json/--no-json` support
 
@@ -68,7 +68,7 @@ uvx --from "git+https://github.com/CaptainCodeAU/claude-code-transcripts.git@0.8
 
 This tool converts Claude Code session files into browseable multi-page HTML transcripts.
 
-Six subcommands plus a standalone reconciliation script. The first four are interactive; `hook` and `render` are the automated SessionEnd capture pipeline, normally invoked by the companion plugin rather than by you directly.
+Six subcommands plus a standalone reconciliation script. The first four (`local`, `web`, `json`, `all`) are the user-facing conversion commands (`local` and `web` show an interactive picker; `json` takes a file/URL argument and `all` runs unattended); `hook` and `render` are the automated SessionEnd capture pipeline, normally invoked by the companion plugin rather than by you directly.
 
 - `local` (default) - select from local Claude Code sessions stored in `~/.claude/projects`
 - `web` - select from web sessions via the Claude API
@@ -88,7 +88,7 @@ This shows an interactive picker to select a session, generates HTML, and opens 
 
 ### Output options
 
-All commands support these options:
+The three single-session commands (`local`, `json`, `web`) support these options (`all` has its own surface -- see [Converting all sessions](#converting-all-sessions) -- and shares only `-o`, `--open`, and `--json/--no-json`):
 
 - `-o, --output DIRECTORY` - output directory (default: writes to temp dir and opens browser)
 - `-a, --output-auto` - auto-name output subdirectory based on session ID or filename
@@ -98,7 +98,7 @@ All commands support these options:
 - `--json` / `--no-json` - include the original session file in the output directory (default: include; use `--no-json` to suppress)
 
 The generated output includes:
-- `index.html` - an index page with a timeline of prompts and commits
+- `index.html` - an index page with a timeline of prompts and commits, plus a client-side search box that finds text across all of the session's pages
 - `page-001.html`, `page-002.html`, etc. - paginated transcript pages
 
 ### Local sessions
@@ -296,7 +296,8 @@ The script shows a move plan with action-verb headings, then prompts for each gr
 - **Move N sessions?** -- new sessions for existing or new projects
 - **Move N to _UNKNOWN?** -- sessions that can't be matched to any project
 - **Move N duplicates to _DELETE?** -- duplicate orphans sent to `_DELETE/duplicates/`
-- **Move N empty/unrecognized to _DELETE?** -- empty or non-session folders
+- **Move N empty folders to _DELETE?** -- empty orphan folders sent to `_DELETE/empty/`
+- **Move N unrecognized folders to _DELETE?** -- non-session folders sent to `_DELETE/unrecognized/`
 
 **Drifted folders** (`--merge-drift`): sessions sitting in the wrong project folder (e.g., because an older buggy resolver produced a different display name) get re-routed using the session's own `cwd`. For each session: MOVE if the correct project has no collision; DEDUPE_IDENTICAL (soft-delete to `_DELETE/drift-dedupe/`) if a byte-equal copy already exists in the correct project; CONFLICT (untouched, reported) if the JSONL contents differ. Project folders left empty by the merge get drained to `_DELETE/drift-empty-projects/`.
 

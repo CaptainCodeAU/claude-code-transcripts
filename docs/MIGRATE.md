@@ -152,6 +152,14 @@ If the transcript archive doesn't contain a folder for this project, the archive
 
 If the old and new display names are identical (e.g., moving between directories at the same depth), the archive rename step is skipped.
 
+### Path Does Not Exist
+
+```
+Error: /path/to/folder is not a directory.
+```
+
+This check runs before the git check: if the given path doesn't exist or isn't a directory, the script errors immediately with exit code 1.
+
 ### Not a Git Repository
 
 ```
@@ -176,6 +184,14 @@ Error: no origin remote found.
 ```
 
 The repo must have a remote named `origin` with a parseable URL.
+
+### Unparseable Remote URL
+
+```
+Error: cannot parse remote URL: <url>
+```
+
+If `origin` exists but its URL matches none of the recognized formats (SSH alias, SSH standard, or HTTPS), the script errors rather than guessing an owner.
 
 ### Cross-Filesystem Moves
 
