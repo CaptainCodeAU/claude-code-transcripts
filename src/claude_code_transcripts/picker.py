@@ -3,11 +3,12 @@
 Renders an interactive single-select list to the terminal using termios/tty raw
 mode. Up/Down (or k/j) move the highlight, Enter selects, and q or Esc cancels.
 
-POSIX-only by design: callers use it only for interactive sessions, so there is
-no non-TTY fallback (a piped stdin makes termios.tcgetattr raise, which is the
-correct "not interactive" signal). The terminal is always restored through a
-try/finally, even when the body raises. The list is drawn to stderr so stdout
-stays clean for piping.
+POSIX-only by design: callers use it for interactive sessions. When stdin is not
+a usable interactive terminal (piped/redirected input, or the controlling
+terminal has gone away -- termios.tcgetattr raises, which is EIO on Linux and
+ENOTTY elsewhere), the picker cancels gracefully by returning None, the same as
+an EOF. The terminal is always restored through a try/finally, even when the
+body raises. The list is drawn to stderr so stdout stays clean for piping.
 """
 
 import os
@@ -43,7 +44,14 @@ def select_from_list(prompt, choices, stream=None):
     in_stream = stream if stream is not None else sys.stdin
     fd = in_stream.fileno()
     out = sys.stderr
-    old_attrs = termios.tcgetattr(fd)
+    try:
+        old_attrs = termios.tcgetattr(fd)
+    except (termios.error, OSError):
+        # Not a usable interactive terminal: piped/redirected stdin, or the
+        # controlling terminal has gone away (a closed pty master surfaces as
+        # EIO on Linux, ENOTTY elsewhere). Treat it like EOF and cancel
+        # gracefully instead of letting termios.error escape to the caller.
+        return None
     index = 0
     try:
         # TCSANOW (not the setraw default TCSAFLUSH) so we do not discard any

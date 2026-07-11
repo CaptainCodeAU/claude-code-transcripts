@@ -99,6 +99,20 @@ def test_eof_cancels_returns_none():
         os.close(slave)
 
 
+def test_non_tty_stream_cancels_returns_none():
+    # A stream whose fd is not a terminal (here, a pipe) makes termios.tcgetattr
+    # raise. On Linux the closed-pty EOF case (test_eof above) surfaces the same
+    # way (EIO), which is why that test is green on macOS but red on CI. The
+    # picker must cancel gracefully (return None), not propagate termios.error.
+    # This reproduces the headless-CI failure on every platform.
+    read_fd, write_fd = os.pipe()
+    try:
+        assert select_from_list("Select:", CHOICES, stream=_PtyStdin(read_fd)) is None
+    finally:
+        os.close(read_fd)
+        os.close(write_fd)
+
+
 def test_empty_choices_returns_none():
     # Guard runs before any terminal access, so no stream is needed.
     assert select_from_list("Select:", []) is None
