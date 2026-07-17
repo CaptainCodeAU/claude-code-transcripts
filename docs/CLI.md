@@ -386,11 +386,12 @@ correct project name from the session's `cwd` via the fixed
 `get_project_display_name` and picks one of:
 
 - **MOVE**: no collision in the correct project, so the session is relocated there.
-- **DEDUPE_IDENTICAL**: a session with the same UUID and a byte-equal JSONL
-  already exists in the correct project, so the wrong copy is soft-deleted to
-  `_DELETE/drift-dedupe/<wrong-project>/`.
+- **DEDUPE_IDENTICAL**: a session with the same UUID and a same-size JSONL
+  already exists in the correct project (file size is the equality proxy, since
+  JSONL is append-only; contents are not byte-compared), so the wrong copy is
+  soft-deleted to `_DELETE/drift-dedupe/<wrong-project>/`.
 - **CONFLICT**: a session with the same UUID exists in the correct project but
-  the JSONL contents differ. Both copies are left in place and reported. Drift
+  the JSONL sizes differ (treated as differing content). Both copies are left in place and reported. Drift
   mode never auto-resolves a content conflict (honors the same
   nothing-is-permanently-deleted rule that governs the rest of the script).
 
@@ -425,7 +426,7 @@ uv run python scripts/reconcile_sessions.py --no-reindex ~/CODE/my-claude-code-t
 # Drift mode: preview project-name drift remediation (re-derives from JSONL cwd)
 uv run python scripts/reconcile_sessions.py --merge-drift --dry-run ~/CODE/my-claude-code-transcripts/
 
-# Drift mode: apply (moves uniques, soft-deletes byte-equal dupes, drains empty projects)
+# Drift mode: apply (moves uniques, soft-deletes same-size dupes, drains empty projects)
 uv run python scripts/reconcile_sessions.py --merge-drift --yes ~/CODE/my-claude-code-transcripts/
 ```
 

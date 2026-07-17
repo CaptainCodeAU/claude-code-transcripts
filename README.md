@@ -26,7 +26,7 @@ Features added in this fork beyond the upstream project.
 - **SessionEnd capture pipeline** via the new [`hook`](docs/CLI.md#hook) and [`render`](docs/CLI.md#render) subcommands: cwd-first project-name resolution, idempotent skip on unchanged sessions, fast capture, and a detached background render so session shutdown is never blocked
 - **Env-driven configuration** for the pipeline: `TRANSCRIPT_EXPORT_DIR`, opt-in `TRANSCRIPT_VOICE_URL` / `TRANSCRIPT_VOICE_ID`, `TRANSCRIPT_OPEN_FOLDER`, `SKIP_SESSION_END_HOOK` (see [`docs/CLI.md#environment-variables`](docs/CLI.md#environment-variables))
 - **Companion plugin** for automatic session-end export via [claude-transcript-exporter](https://github.com/CaptainCodeAU/gz-claude-code-plugins): now a thin wrapper that pipes the SessionEnd payload to `claude-code-transcripts hook` with no business logic of its own, so naming/resolve/skip/render stay in one place and can't drift
-- **Reconciliation script** (`scripts/reconcile_sessions.py`) with two modes: orphan handling (folds UUID folders into projects) and `--merge-drift` (re-derives the correct project from each session's JSONL `cwd`, merges drifted project folders, soft-deletes byte-equal duplicates to `_DELETE/`)
+- **Reconciliation script** (`scripts/reconcile_sessions.py`) with two modes: orphan handling (folds UUID folders into projects) and `--merge-drift` (re-derives the correct project from each session's JSONL `cwd`, merges drifted project folders, soft-deletes same-size duplicates to `_DELETE/`)
 
 > **Note on the stdlib CLI.** As of **`0.8`**, the CLI is stdlib `argparse` plus a built-in arrow-key session picker, dropping the `click` / `click-default-group` / `questionary` dependencies. Releases `0.7` and earlier still use `click` / `questionary`, so install `@0.8` (or later) to get the stdlib CLI.
 
@@ -299,7 +299,7 @@ The script shows a move plan with action-verb headings, then prompts for each gr
 - **Move N empty folders to _DELETE?** -- empty orphan folders sent to `_DELETE/empty/`
 - **Move N unrecognized folders to _DELETE?** -- non-session folders sent to `_DELETE/unrecognized/`
 
-**Drifted folders** (`--merge-drift`): sessions sitting in the wrong project folder (e.g., because an older buggy resolver produced a different display name) get re-routed using the session's own `cwd`. For each session: MOVE if the correct project has no collision; DEDUPE_IDENTICAL (soft-delete to `_DELETE/drift-dedupe/`) if a byte-equal copy already exists in the correct project; CONFLICT (untouched, reported) if the JSONL contents differ. Project folders left empty by the merge get drained to `_DELETE/drift-empty-projects/`.
+**Drifted folders** (`--merge-drift`): sessions sitting in the wrong project folder (e.g., because an older buggy resolver produced a different display name) get re-routed using the session's own `cwd`. For each session: MOVE if the correct project has no collision; DEDUPE_IDENTICAL (soft-delete to `_DELETE/drift-dedupe/`) if a same-size copy already exists in the correct project (file size is the equality proxy, since JSONL is append-only; contents are not byte-compared); CONFLICT (untouched, reported) if the JSONL sizes differ. Project folders left empty by the merge get drained to `_DELETE/drift-empty-projects/`.
 
 ```bash
 # Preview the drift plan (no changes):

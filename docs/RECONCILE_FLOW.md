@@ -333,7 +333,7 @@ Declining one skips it and continues to the next.
   ├── empty/                 empty orphan folders
   ├── unrecognized/          orphan folders with non-session files
   ├── replaced/              old organized copies overwritten by newer orphans
-  ├── drift-dedupe/<wrong>/  (--merge-drift) byte-equal drift copies removed from the wrong project
+  ├── drift-dedupe/<wrong>/  (--merge-drift) same-size drift copies removed from the wrong project
   └── drift-empty-projects/  (--merge-drift) project folders left empty after drift moves
 
   Collision handling:
@@ -384,9 +384,10 @@ Declining one skips it and continues to the next.
 
    MOVE              session cwd derives to a different project, no collision
                      -> relocated to the correct project dir
-   DEDUPE_IDENTICAL  byte-equal copy already in the correct project
+   DEDUPE_IDENTICAL  same-size copy already in the correct project
+                     (size = equality proxy; contents not byte-compared)
                      -> wrong copy to _DELETE/drift-dedupe/<wrong-project>/
-   CONFLICT          same UUID but differing content
+   CONFLICT          same UUID but differing size (treated as differing content)
                      -> both copies left in place, reported, never auto-resolved
    Drain empties     project folder emptied of sessions by drift moves
                      -> folder to _DELETE/drift-empty-projects/
@@ -482,7 +483,7 @@ the orphan groups and before the mtime-fix step.
                                |
                                +-- no  --> MOVE  (relocate session to correct project)
                                |
-                               +-- yes --> JSONL byte-equal?
+                               +-- yes --> JSONL same size?
                                              |
                                              +-- yes --> DEDUPE_IDENTICAL
                                              |             wrong copy ->
